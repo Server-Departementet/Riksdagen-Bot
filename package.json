@@ -5,6 +5,9 @@
   "repository": "https://github.com/Server-Departementet/Riksdagen-Bot.git",
   "author": "Vena <ViggoStrom05@gmail.com>",
   "license": "MIT",
+  "scripts": {
+    "start": "node --env-file .env src/main.ts"
+  },
   "dependencies": {
     "discord.js": "^14.21.0"
   },
