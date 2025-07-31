@@ -1,18 +1,22 @@
 import type { Attachment, Collection, Embed, MessageMentions, MessageReference, MessageSnapshot, ReactionManager, Snowflake, TopLevelComponent, User } from "discord.js";
 
 export type Message = {
-  attachments: Collection<Snowflake, Attachment>;
-  author: User;
-  components: TopLevelComponent[];
+
+  // Basic inherited from Discord
+  id: Snowflake;
+  authorId: User;
   content: string;
+  url: string;
+
+  // Extended things from Discord
+  attachments: Collection<Snowflake, Attachment>;
+  components: TopLevelComponent[];
   createdTimestamp: string;
   editedTimestamp: string | null;
   embeds: Embed[];
-  id: Snowflake;
   mentions: MessageMentions;
   pinned: boolean;
   reactions: ReactionManager;
-  url: string;
   reference: MessageReference | null;
   messageSnapshots: Collection<Snowflake, MessageSnapshot>;
 };
