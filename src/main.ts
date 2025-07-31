@@ -6,92 +6,31 @@ import { env } from "node:process";
     process.exit(1);
   }
 });
-
-import { Client, Events, GatewayIntentBits, Message as DiscordMessage } from "discord.js";
-import type { Message as PrismaMessage } from "../prisma/generated/prisma/index.js";
 import { readFileSync, statSync, writeFileSync } from "node:fs";
-import { MessageKeys } from "./types.ts";
+import { Message as DiscordMessage } from "discord.js";
+import { fetchQuotes } from "./fetch.ts";
 
-/** 
- * Discord
- */
-const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.MessageContent] });
+const cacheDuration = 10 * 60 * 1000; // 10 minutes in milliseconds
 
-client.on(Events.ClientReady, async readyClient => {
-  console.info(`Logged in as ${readyClient.user.tag}!`);
-  await readQuotes();
-});
-
-client.login(env.DISCORD_BOT_TOKEN || "")
-  .then(() => console.log("Bot is online!"))
-  .catch(error => console.error("Failed to log in:", error));
-
-
-async function readQuotes() {
-  const cache = JSON.parse(readFileSync("./quotes.json", "utf-8")) as DiscordMessage[];
-  const cacheDate = statSync("./quotes.json").mtime;
-  const today = new Date();
-  const cacheTime = 10 * 60 * 1000; // 10 minutes in milliseconds
-  if (cache.length > 0 && (today.getTime() - cacheDate.getTime()) < cacheTime) {
-    console.info("Using cached quotes from quotes.json");
-    await writeQuotesToDB(cache);
-    return;
-  }
-
-  const channel = await client.channels.fetch(env.DISCORD_QUOTE_CHANNEL_ID || "SOMETHING_WENT_WRONG");
-  if (!channel || !channel.isTextBased()) {
-    console.error("Failed to fetch the quote channel or it is not a text channel.");
-    return;
-  }
-
-  const batchSize = 100;
-  const buffer: DiscordMessage[] = [];
-  let lastMessageId: string | null = null;
-  let hasMoreMessages = true;
-  let hardLimitCount = 0;
-  while (hasMoreMessages) {
-    if (hardLimitCount >= 10000) {
-      console.warn("Hard limit reached, stopping message fetch.");
-      break;
-    }
-    hardLimitCount++;
-
-    console.info(`Fetching messages from channel ${channel.id}... (${buffer.length}...)`);
-
-    const options: { limit?: number; before?: string } = { limit: batchSize };
-    if (lastMessageId) {
-      options.before = lastMessageId;
-    }
-
-    const messages = await channel.messages.fetch({ ...options, cache: true });
-    if (messages.size === 0) {
-      hasMoreMessages = false;
-      continue;
-    }
-
-    messages.forEach(message => {
-      if (!message.author.bot) {
-        buffer.push(message);
-      }
-    });
-
-    lastMessageId = messages.last()?.id || null;
-  }
-
-  console.log(buffer.length, "messages fetched from the quote channel.");
-
-  // Write the buffer to quotes.json
-  console.info("Writing quotes to quotes.json...");
-  writeFileSync("./quotes.json", JSON.stringify(buffer), "utf-8");
-
-  if (buffer.length > 0) {
-    console.info("Writing quotes to the database...");
-    await writeQuotesToDB(buffer);
+async function getQuotes() {
+  const cacheDate = statSync("./quotes.json")?.mtime;
+  if (cacheDate && (new Date().getTime() - cacheDate.getTime()) < cacheDuration) {
+    const cache = JSON.parse(readFileSync("./quotes.json", "utf-8")) as DiscordMessage[];
+    console.info("Using cached quotes.json");
+    return cache;
   }
   else {
-    console.warn("No messages found in the quote channel.");
+    console.info("Fetching quotes from Discord...");
+    const messages = await fetchQuotes();
+    if (messages.length === 0) {
+      console.warn("No messages fetched, using empty cache.");
+      return [];
+    }
+    console.info("Fetched", messages.length, "messages from Discord.");
+    writeFileSync("./quotes.json", JSON.stringify(messages), "utf-8");
+    return messages;
   }
 }
 
-async function writeQuotesToDB(messages: DiscordMessage[]) {
-}
+await getQuotes()
+  .then(() => console.info("Quotes fetched and cached successfully."))
