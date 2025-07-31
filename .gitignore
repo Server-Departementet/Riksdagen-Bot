@@ -147,3 +147,5 @@ db
 # For testing
 quotes.json
 users.json
+quoted.json
+author.json

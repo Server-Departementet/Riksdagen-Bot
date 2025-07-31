@@ -7,7 +7,7 @@ import { env } from "node:process";
   }
 });
 import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
-import { Message as DiscordMessage, quote } from "discord.js";
+import { Message as DiscordMessage, quote, User as DiscordUser } from "discord.js";
 import { fetchQuotes, fetchUsers } from "./fetch.ts";
 
 // Create cache files if they don't exist
@@ -36,7 +36,7 @@ async function getQuotes() {
   }
 }
 
-async function getUsers(messages: DiscordMessage[]) {
+async function getUsers(messages: DiscordMessage[]): Promise<DiscordUser[]> {
   const cacheDate = statSync("./users.json")?.mtime;
   const cache = JSON.parse(readFileSync("./users.json", "utf-8"));
   if (cache.length && (new Date().getTime() - cacheDate.getTime()) < cacheDuration) {
@@ -66,8 +66,28 @@ const users = await getUsers(messages);
 const quoteCharacters = ['"', "'", "“", "‘", "”", "’", "«", "»"];
 
 const quotedCount: Record<string, number> = {};
+const authorCount: Record<string, number> = {};
 
+const altNameMap: Record<string, string> = {
+  "Viggo": "Vena",
+  "Viggos pappa": "Venas pappa",
+  "Viggos mamma": "Venas mamma",
+  "Viggos mor": "Venas mor",
+};
+
+const quotes: {
+  author: string;
+  authorId: string;
+  quote: string;
+  quoted: string;
+  context: string;
+  url: string;
+}[] = [];
+
+let i = -1;
 for (const message of messages) {
+  i++;
+
   const content = message.content;
 
   const url = `https://discord.com/channels/${env.DISCORD_GUILD_ID}/${env.DISCORD_QUOTE_CHANNEL_ID}/${message.id}`;
@@ -80,23 +100,66 @@ for (const message of messages) {
 
   const isMultipleLines = content.includes("\n");
   if (isMultipleLines) {
-    console.log(`\x1b[90m${url}\x1b[0m`);
-    console.log(`\x1b[90m${content}\x1b[0m`);
-    console.dir(message, { depth: null });
-    break;
+    console.log("Skipping multi line");
+    continue;
   }
 
-  const [body, meta] = content.split(/\s?-\s?/, 2);
+  const author = users.find(u => u.id ===
+    // @ts-expect-error - Discord.js is lying
+    message.authorId
+  ) as DiscordUser & { nickname: string };
+
+  const [body, meta] = content.split(new RegExp(`[?:${quoteCharacters.join("")}]\\s?-\\s?`), 2).map(s => s.trim());
   const quote = body.substring(1, body.length - 1).trim();
 
-  console.log(`\x1b[90m${url}\x1b[0m`);
-  console.log(`\x1b[90m${content}\x1b[0m`);
-  console.log(quote);
-  console.log(meta);
-  console.log("");
+  const [_match, quoted, context] = Array.from(meta.match(/(.*?)((?:\s(?:som|om|till|efter|i|när|medan|\()|,|$).*)/) || []).map(s => s.replace(/^,/, "").trim());
 
-  if (!meta || (meta.length > quote.length)) {
-    console.dir(message, { depth: null });
-    break;
-  }
+  // if (meta.includes(" ")) {
+  //   console.log(`\x1b[90m${i} ${url}\x1b[0m`);
+  //   console.log(`\x1b[90m${content}\x1b[0m`);
+  //   console.log("Author:", author.nickname);
+  //   console.log("Quote:", quote);
+  //   console.log("Quoted:", quoted);
+  //   console.log("Context:", context);
+  //   console.log("");
+  // }
+
+  const attributedName = altNameMap[quoted] || quoted;
+  if (quotedCount[attributedName]) quotedCount[attributedName]++;
+  else quotedCount[attributedName] = 1;
+
+  if (authorCount[author.nickname]) authorCount[author.nickname]++;
+  else authorCount[author.nickname] = 1;
+
+  quotes.push({
+    author: author.nickname,
+    authorId: author.id,
+    quote: quote,
+    quoted: attributedName,
+    context: context,
+    url: url,
+  });
 }
+
+// const authorsWithLinks = Object.fromEntries(Object.keys(authorCount)
+//   .map(a => {
+//     return [a, quotes.filter(q => q.author === a).map(q => q.url).join(", ")];
+//   }));
+
+// const quotedWithLinks = Object.fromEntries(Object.keys(quotedCount)
+//   .map(q => {
+//     return [q, quotes.filter(quote => quote.quoted === q).map(q => `"${q.url}"`).join(", ")];
+//   }));
+
+// const sortedQuotedWithLinks = Object.entries(quotedWithLinks)
+//   .sort((a, b) => b[1].split(", ").length - a[1].split(", ").length)
+//   .map(([name, links]) => `"${name}": [${links}]`)
+//   .join(",\n\t");
+
+// writeFileSync("./quoted.json", `{\n\t${sortedQuotedWithLinks}\n}`, "utf-8");
+
+
+// const sortedAuthorCount = Object.entries(authorCount).sort((a, b) => b[1] - a[1]).map(([name, count]) => `"${name}": ${count}`).join(",\n\t");
+// const sortedQuotedCount = Object.entries(quotedCount).sort((a, b) => b[1] - a[1]).map(([name, count]) => `"${name}": ${count}`).join(",\n\t");
+
+// writeFileSync("./author.json", `{\n\t${sortedAuthorCount}\n}`, "utf-8");
