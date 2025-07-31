@@ -7,7 +7,7 @@ import { env } from "node:process";
   }
 });
 import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
-import { Message as DiscordMessage } from "discord.js";
+import { Message as DiscordMessage, quote } from "discord.js";
 import { fetchQuotes, fetchUsers } from "./fetch.ts";
 
 // Create cache files if they don't exist
@@ -65,24 +65,38 @@ const users = await getUsers(messages);
 
 const quoteCharacters = ['"', "'", "“", "‘", "”", "’", "«", "»"];
 
-const quoteeCount: Record<string, number> = {};
+const quotedCount: Record<string, number> = {};
 
 for (const message of messages) {
   const content = message.content;
 
+  const url = `https://discord.com/channels/${env.DISCORD_GUILD_ID}/${env.DISCORD_QUOTE_CHANNEL_ID}/${message.id}`;
+
   if (!content) {
+    console.log(url);
     console.dir(message, { depth: null });
     break;
   }
 
-  const openingQuote = quoteCharacters.map(c => content.indexOf(c)).filter(i => i !== -1).sort((a, b) => a - b)[0];
-  const closingQuote = quoteCharacters.map(c => content.lastIndexOf(c)).filter(i => i !== -1).sort((a, b) => b - a)[0];
+  const isMultipleLines = content.includes("\n");
+  if (isMultipleLines) {
+    console.log(`\x1b[90m${url}\x1b[0m`);
+    console.log(`\x1b[90m${content}\x1b[0m`);
+    console.dir(message, { depth: null });
+    break;
+  }
 
-  const body = content.substring(openingQuote + 1, closingQuote);
+  const [body, meta] = content.split(/\s?-\s?/, 2);
+  const quote = body.substring(1, body.length - 1).trim();
 
+  console.log(`\x1b[90m${url}\x1b[0m`);
   console.log(`\x1b[90m${content}\x1b[0m`);
-  console.log(body);
-
+  console.log(quote);
+  console.log(meta);
   console.log("");
+
+  if (!meta || (meta.length > quote.length)) {
+    console.dir(message, { depth: null });
+    break;
+  }
 }
-// https://discord.com/channels/1167416170769563750/1167423681648136202/1167427335247646791

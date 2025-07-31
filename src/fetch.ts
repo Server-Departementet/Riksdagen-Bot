@@ -1,6 +1,11 @@
 import { env } from "node:process";
 import { Client, Events, GatewayIntentBits, Message as DiscordMessage, User as DiscordUser } from "discord.js";
 
+/** Message id's of messages to be ignored */
+const messageBlacklist = [
+  "1167426858887958568", // Formatting test message
+]
+
 export function fetchQuotes(): Promise<DiscordMessage[]> {
   const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.MessageContent] });
 
@@ -61,6 +66,8 @@ export function fetchQuotes(): Promise<DiscordMessage[]> {
             !message.author.bot
             &&
             message.type === 0
+            &&
+            !messageBlacklist.includes(message.id)
           ) {
             buffer.push(message);
           }
