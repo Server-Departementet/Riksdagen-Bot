@@ -137,3 +137,7 @@ dist
 # Vite logs files
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
+
+# Code outputs sqlite files into db
+db
+/prisma/generated/prisma
