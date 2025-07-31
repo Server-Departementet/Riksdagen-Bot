@@ -8,13 +8,9 @@ import { env } from "node:process";
 });
 
 import { Client, Events, GatewayIntentBits, Message as DiscordMessage } from "discord.js";
-import { DatabaseSync } from "node:sqlite";
-import type { Message } from "./types.js";
-
-/** 
- * DB
- */
-const quoteDB = new DatabaseSync(`db/quotes-${new Date().toISOString().replace(/T.*/, "")}.db`);
+import type { Message as PrismaMessage } from "../prisma/generated/prisma/index.js";
+import { readFileSync, statSync, writeFileSync } from "node:fs";
+import { MessageKeys } from "./types.ts";
 
 /** 
  * Discord
@@ -32,6 +28,16 @@ client.login(env.DISCORD_BOT_TOKEN || "")
 
 
 async function readQuotes() {
+  const cache = JSON.parse(readFileSync("./quotes.json", "utf-8")) as DiscordMessage[];
+  const cacheDate = statSync("./quotes.json").mtime;
+  const today = new Date();
+  const cacheTime = 10 * 60 * 1000; // 10 minutes in milliseconds
+  if (cache.length > 0 && (today.getTime() - cacheDate.getTime()) < cacheTime) {
+    console.info("Using cached quotes from quotes.json");
+    await writeQuotesToDB(cache);
+    return;
+  }
+
   const channel = await client.channels.fetch(env.DISCORD_QUOTE_CHANNEL_ID || "SOMETHING_WENT_WRONG");
   if (!channel || !channel.isTextBased()) {
     console.error("Failed to fetch the quote channel or it is not a text channel.");
@@ -57,7 +63,7 @@ async function readQuotes() {
       options.before = lastMessageId;
     }
 
-    const messages = await channel.messages.fetch(options);
+    const messages = await channel.messages.fetch({ ...options, cache: true });
     if (messages.size === 0) {
       hasMoreMessages = false;
       continue;
@@ -74,63 +80,18 @@ async function readQuotes() {
 
   console.log(buffer.length, "messages fetched from the quote channel.");
 
-  // Write buffer to db as messages in the message table
-  const trimmedMessages: Message[] = buffer.map(m => ({
-    id: m.id,
-    attachments: m.attachments,
-    author: m.author,
-    components: m.components,
-    content: m.content,
-    createdTimestamp: m.createdTimestamp,
-    editedTimestamp: m.editedTimestamp,
-    embeds: m.embeds,
-    mentions: m.mentions,
-    pinned: m.pinned,
-    reactions: m.reactions,
-    messageSnapshots: m.messageSnapshots,
-    url: m.url,
-    reference: m.reference,
-  }));
+  // Write the buffer to quotes.json
+  console.info("Writing quotes to quotes.json...");
+  writeFileSync("./quotes.json", JSON.stringify(buffer), "utf-8");
 
-  // Create table if it doesn't exist
-  quoteDB.exec(`CREATE TABLE IF NOT EXISTS messages (
-    id TEXT PRIMARY KEY,
-    attachments TEXT,
-    author TEXT,
-    components TEXT,
-    content TEXT,
-    createdTimestamp INTEGER,
-    editedTimestamp INTEGER,
-    embeds TEXT,
-    mentions TEXT,
-    pinned INTEGER,
-    reactions TEXT,
-    url TEXT,
-    reference TEXT
-  )`);
-
-  // Insert messages into the table
-  const insert = quoteDB.prepare(`INSERT INTO messages (id, attachments, author, components, content, createdTimestamp, editedTimestamp, embeds, mentions, pinned, reactions, url, reference) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
-  for (const message of trimmedMessages) {
-    insert.run(
-      message.id,
-      JSON.stringify(message.attachments),
-      message.author.id,
-      JSON.stringify(message.components),
-      message.content,
-      message.createdTimestamp,
-      message.editedTimestamp,
-      JSON.stringify(message.embeds),
-      JSON.stringify(message.mentions),
-      message.pinned ? 1 : 0,
-      JSON.stringify(message.reactions),
-      message.url,
-      message.reference ? JSON.stringify(message.reference) : null
-    );
+  if (buffer.length > 0) {
+    console.info("Writing quotes to the database...");
+    await writeQuotesToDB(buffer);
   }
+  else {
+    console.warn("No messages found in the quote channel.");
+  }
+}
 
-  // Log the number of messages inserted
-  console.log(`${trimmedMessages.length} messages inserted into the database.`);
-
-  process.exit(0);
+async function writeQuotesToDB(messages: DiscordMessage[]) {
 }

@@ -1,0 +1,29 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("PRISMA_DATABASE_URL")
+}
+
+model Message {
+  id               String  @id
+  attachments      String
+  author           String
+  components       String
+  content          String
+  createdTimestamp String
+  editedTimestamp  String?
+  embeds           String
+  mentions         String
+  pinned           Boolean
+  reactions        String
+  url              String
+  reference        String?
+  messageSnapshots String
+}

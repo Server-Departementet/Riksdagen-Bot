@@ -140,4 +140,9 @@ vite.config.ts.timestamp-*
 
 # Code outputs sqlite files into db
 db
+
+# Prisma client
 /prisma/generated/prisma
+
+# For testing
+quotes.json
