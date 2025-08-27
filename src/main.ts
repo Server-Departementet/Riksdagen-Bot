@@ -1,4 +1,10 @@
 import { env } from "node:process";
+const newEnv = readFileSync(".env", "utf-8").split("\n").map(line => line.trim()).filter(line => line && !line.startsWith("#")).reduce((acc, line) => {
+  const [key, ...value] = line.split("=");
+  acc[key] = value.join("=");
+  return acc;
+}, env);
+Object.assign(env, newEnv);
 // ENV guard
 ["DISCORD_BOT_TOKEN", "DISCORD_CLIENT_ID", "DISCORD_CLIENT_SECRET", "DISCORD_QUOTE_CHANNEL_ID", "DISCORD_GUILD_ID"].forEach((variableName) => {
   if (!env[variableName]) {
@@ -141,25 +147,14 @@ for (const message of messages) {
   });
 }
 
-// const authorsWithLinks = Object.fromEntries(Object.keys(authorCount)
-//   .map(a => {
-//     return [a, quotes.filter(q => q.author === a).map(q => q.url).join(", ")];
-//   }));
+const quotedWithLinks = Object.fromEntries(Object.keys(quotedCount)
+  .map(q => {
+    return [q, quotes.filter(quote => quote.quoted === q).map(q => `"${q.url}"`).join(", ")];
+  }));
 
-// const quotedWithLinks = Object.fromEntries(Object.keys(quotedCount)
-//   .map(q => {
-//     return [q, quotes.filter(quote => quote.quoted === q).map(q => `"${q.url}"`).join(", ")];
-//   }));
+const sortedQuotedWithLinks = Object.entries(quotedWithLinks)
+  .sort((a, b) => b[1].split(", ").length - a[1].split(", ").length)
+  .map(([name, links]) => `"${name}": [${links.split(", ").length}, ${links}]`)
+  .join(",\n\t");
 
-// const sortedQuotedWithLinks = Object.entries(quotedWithLinks)
-//   .sort((a, b) => b[1].split(", ").length - a[1].split(", ").length)
-//   .map(([name, links]) => `"${name}": [${links}]`)
-//   .join(",\n\t");
-
-// writeFileSync("./quoted.json", `{\n\t${sortedQuotedWithLinks}\n}`, "utf-8");
-
-
-// const sortedAuthorCount = Object.entries(authorCount).sort((a, b) => b[1] - a[1]).map(([name, count]) => `"${name}": ${count}`).join(",\n\t");
-// const sortedQuotedCount = Object.entries(quotedCount).sort((a, b) => b[1] - a[1]).map(([name, count]) => `"${name}": ${count}`).join(",\n\t");
-
-// writeFileSync("./author.json", `{\n\t${sortedAuthorCount}\n}`, "utf-8");
+writeFileSync("./quoted.json", `{\n\t${sortedQuotedWithLinks}\n}`, "utf-8");
