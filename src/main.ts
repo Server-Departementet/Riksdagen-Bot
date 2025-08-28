@@ -1,10 +1,5 @@
+// node --env-file .env src/main.ts
 import { env } from "node:process";
-const newEnv = readFileSync(".env", "utf-8").split("\n").map(line => line.trim()).filter(line => line && !line.startsWith("#")).reduce((acc, line) => {
-  const [key, ...value] = line.split("=");
-  acc[key] = value.join("=");
-  return acc;
-}, env);
-Object.assign(env, newEnv);
 // ENV guard
 ["DISCORD_BOT_TOKEN", "DISCORD_CLIENT_ID", "DISCORD_CLIENT_SECRET", "DISCORD_QUOTE_CHANNEL_ID", "DISCORD_GUILD_ID"].forEach((variableName) => {
   if (!env[variableName]) {
