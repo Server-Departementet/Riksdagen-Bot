@@ -40,8 +40,9 @@ function flagFromText(text: string | undefined): RecordFlag | undefined {
 }
 
 export function formatRecords(records: CourseRecords, signatures: Record<string, string>, updatedAt: Date): string {
-  const sections = [...records]
-    .sort((a, b) => a.course.localeCompare(b.course, "sv-SE"))
+  // Sections render in stored order - a freshly played course sinks to the bottom
+  // (see applyRoundResults), so the least played ones migrate to the top
+  const sections = records
     .map(({ course, entries }) => {
       const lines = [...entries]
         .sort((a, b) => a.points - b.points || a.date.localeCompare(b.date))
@@ -114,12 +115,15 @@ export function applyRoundResults(records: CourseRecords, courseName: string, re
   }
 
   // An actual score change moves the celebration flags: clear the old ones, flag
-  // every improvement as a PR. No change means the previous flags stay put.
+  // every improvement as a PR. It also sinks the course to the bottom of the board.
+  // No change means the previous flags and order stay put.
   if (improvedEntries.length > 0) {
     for (const s of records) {
       for (const entry of s.entries) delete entry.flag;
     }
     for (const entry of improvedEntries) entry.flag = "pr";
+    records.splice(records.indexOf(section), 1);
+    records.push(section);
   }
 
   const best = [...section.entries].sort((a, b) => a.points - b.points || a.date.localeCompare(b.date))[0];

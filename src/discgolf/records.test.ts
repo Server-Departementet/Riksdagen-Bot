@@ -15,24 +15,24 @@ await test("formatRecords and parseRecords round-trip", () => {
     { course: "domarringen", entries: [{ userId: "3", points: 36, date: "2026-07-27" }] },
   ];
 
-  // User 2 has no signature - the emoji is simply omitted
+  // User 2 has no signature - the emoji is simply omitted.
+  // Sections keep their stored order (recency-based), entries sort by score.
   const signatures = { "1": "🩷", "3": "🤘" };
   const content = formatRecords(records, signatures, new Date("2026-07-29T12:34:00+02:00"));
   assert.equal(content, [
     "## Banrekord",
     "-# Uppdateras automatiskt vid /räkna",
     "",
-    "### domarringen",
-    "`36` 🤘 <@3> 2026-07-27",
     "### rosendal",
     "`41` 🩷 <@1> 2026-07-20",
     "`43` <@2> 2026-06-15",
+    "### domarringen",
+    "`36` 🤘 <@3> 2026-07-27",
     "",
     "-# Senast uppdaterad 2026-07-29 12:34",
   ].join("\n"));
 
   assert.deepEqual(parseRecords(content), [
-    { course: "domarringen", entries: [{ userId: "3", points: 36, date: "2026-07-27" }] },
     {
       course: "rosendal",
       entries: [
@@ -40,6 +40,7 @@ await test("formatRecords and parseRecords round-trip", () => {
         { userId: "2", points: 43, date: "2026-06-15" },
       ],
     },
+    { course: "domarringen", entries: [{ userId: "3", points: 36, date: "2026-07-27" }] },
   ]);
 });
 
@@ -123,6 +124,21 @@ await test("a count without score changes leaves existing flags untouched", () =
   const result = applyRoundResults(records, "Rosendal", [{ userId: "1", points: 41, date: "2026-07-29" }]);
   assert.equal(result.improved, false);
   assert.equal(records[0]?.entries[0]?.flag, "banrekord");
+});
+
+await test("a new score sinks the course to the bottom of the board", () => {
+  const records: CourseRecords = [
+    { course: "Rosendal", entries: [{ userId: "1", points: 41, date: "2026-07-20" }] },
+    { course: "Röbo", entries: [{ userId: "1", points: 49, date: "2026-07-19" }] },
+  ];
+
+  // An improvement on Rosendal moves it below Röbo
+  applyRoundResults(records, "Rosendal", [{ userId: "1", points: 40, date: "2026-07-29" }]);
+  assert.deepEqual(records.map((section) => section.course), ["Röbo", "Rosendal"]);
+
+  // A count without score changes doesn't reorder
+  applyRoundResults(records, "Röbo", [{ userId: "1", points: 60, date: "2026-07-30" }]);
+  assert.deepEqual(records.map((section) => section.course), ["Röbo", "Rosendal"]);
 });
 
 await test("a score change moves the flags: old ones clear, improvements get PR", () => {
