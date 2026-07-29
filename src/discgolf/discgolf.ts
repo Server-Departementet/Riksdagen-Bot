@@ -1,4 +1,5 @@
 import "dotenv/config";
+import fs from "node:fs";
 import path from "node:path";
 import type { ChatInputCommandInteraction, Message } from "discord.js";
 import { Client as DiscordClient, Events, GatewayIntentBits, MessageFlags, REST, Routes, SlashCommandBuilder } from "discord.js";
@@ -31,6 +32,14 @@ logInfo("Starting Discord Discgolf Bot");
 
 const courses = loadCourses(path.join(import.meta.dirname, "courses"));
 logInfo("Loaded courses", { count: courses.length, names: courses.map((course) => course.name) });
+
+// Signature emoji per Discord user id, shown next to record entries.
+// The file is gitignored, so it may be absent on a fresh checkout.
+const signaturesPath = path.join(import.meta.dirname, "..", "..", "signatures.json");
+const signatures: Record<string, string> = fs.existsSync(signaturesPath)
+  ? JSON.parse(fs.readFileSync(signaturesPath, "utf8")) as Record<string, string>
+  : {};
+logInfo("Loaded signatures", { count: Object.keys(signatures).length });
 
 if (!process.env.DISCORD_BOT_TOKEN) throw new Error("DISCORD_BOT_TOKEN is not set in environment variables");
 const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
@@ -306,7 +315,6 @@ async function updateCourseRecords(course: Course, courseMessage: Message, resul
   const eligible: RecordEntry[] = results
     .map(({ memberId, score }) => ({ userId: memberId, points: courseTotal(course, score), date: roundDate }))
     .filter((entry): entry is RecordEntry => entry.points !== undefined);
-  if (eligible.length === 0) return undefined;
 
   const recordChannel = await discordClient.channels.fetch(DISCGOLF_RECORD_CHANNEL_ID);
   if (!recordChannel?.isTextBased()) throw new Error("Record channel not found or is not text-based");
@@ -314,10 +322,10 @@ async function updateCourseRecords(course: Course, courseMessage: Message, resul
 
   const records = parseRecords(recordMessage.content);
   const { improved, newCourseBest } = applyRoundResults(records, course.name, eligible);
-  if (improved) {
-    await recordMessage.edit(formatRecords(records, new Date()));
-    logInfo("Updated record message", { course: course.name, eligibleCount: eligible.length, newBest: newCourseBest?.points });
-  }
+  // Edited on every /räkna, improved or not - "Senast uppdaterad" doubles as proof
+  // that the latest count verified the records
+  await recordMessage.edit(formatRecords(records, signatures, new Date()));
+  logInfo("Updated record message", { course: course.name, eligibleCount: eligible.length, improved, newBest: newCourseBest?.points });
   return newCourseBest;
 }
 

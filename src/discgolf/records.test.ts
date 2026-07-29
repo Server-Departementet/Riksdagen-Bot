@@ -15,15 +15,17 @@ await test("formatRecords and parseRecords round-trip", () => {
     { course: "domarringen", entries: [{ userId: "3", points: 36, date: "2026-07-27" }] },
   ];
 
-  const content = formatRecords(records, new Date("2026-07-29T12:34:00+02:00"));
+  // User 2 has no signature - the emoji is simply omitted
+  const signatures = { "1": "🩷", "3": "🤘" };
+  const content = formatRecords(records, signatures, new Date("2026-07-29T12:34:00+02:00"));
   assert.equal(content, [
     "## Banrekord",
     "-# Uppdateras automatiskt vid /räkna",
     "",
     "### domarringen",
-    "`36` <@3> 2026-07-27",
+    "`36` 🤘 <@3> 2026-07-27",
     "### rosendal",
-    "`41` <@1> 2026-07-20",
+    "`41` 🩷 <@1> 2026-07-20",
     "`43` <@2> 2026-06-15",
     "",
     "-# Senast uppdaterad 2026-07-29 12:34",

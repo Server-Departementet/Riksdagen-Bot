@@ -17,15 +17,20 @@ export type CourseRecords = { course: string; entries: RecordEntry[] }[];
 const RECORDS_TITLE = "## Banrekord";
 const RECORDS_SUBTEXT = "-# Uppdateras automatiskt vid /räkna";
 const courseLineRegex = /^### (.+)$/;
-const entryLineRegex = /^`(\d+)` <@(\d+)> (\d{4}-\d{2}-\d{2})$/;
+// The optional token between score and mention is the player's signature emoji;
+// it is display-only and re-derived from signatures.json on every render
+const entryLineRegex = /^`(\d+)` (?:\S+ )?<@(\d+)> (\d{4}-\d{2}-\d{2})$/;
 
-export function formatRecords(records: CourseRecords, updatedAt: Date): string {
+export function formatRecords(records: CourseRecords, signatures: Record<string, string>, updatedAt: Date): string {
   const sections = [...records]
     .sort((a, b) => a.course.localeCompare(b.course, "sv-SE"))
     .map(({ course, entries }) => {
       const lines = [...entries]
         .sort((a, b) => a.points - b.points || a.date.localeCompare(b.date))
-        .map((entry) => `\`${entry.points}\` <@${entry.userId}> ${entry.date}`);
+        .map((entry) => {
+          const signature = signatures[entry.userId];
+          return `\`${entry.points}\`${signature ? ` ${signature}` : ""} <@${entry.userId}> ${entry.date}`;
+        });
       return [`### ${course}`, ...lines].join("\n");
     });
   const updatedLine = `-# Senast uppdaterad ${updatedAt.toLocaleString("sv-SE", { timeZone: "Europe/Stockholm", dateStyle: "short", timeStyle: "short" })}`;
