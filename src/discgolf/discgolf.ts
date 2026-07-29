@@ -193,7 +193,8 @@ async function räkna(interaction: ChatInputCommandInteraction) {
 
   const guild = interaction.guild ?? await discordClient.guilds.fetch(DISCGOLF_GUILD_ID);
   await guild.members.fetch();
-  const fancyDate = new Date(courseMessage.createdTimestamp).toLocaleString("sv-SE", { timeZone: "Europe/Stockholm", dateStyle: "long" });
+  // Includes the round's start time so two rounds on the same course and day get distinct headers
+  const fancyDate = new Date(courseMessage.createdTimestamp).toLocaleString("sv-SE", { timeZone: "Europe/Stockholm", dateStyle: "long", timeStyle: "short" });
   const results: { memberId: string; name: string; points: number; score: Record<string, HoleScore> }[] = [];
   for (const member of guild.members.cache.values()) {
     if (member.user.bot) continue;
@@ -232,7 +233,8 @@ async function räkna(interaction: ChatInputCommandInteraction) {
     }
   }
 
-  const out = `-# ${fancyDate}\n${courseName}\n${lines.join("\n")}\n\`\`\`\n${table}\n\`\`\``
+  const boardHeader = `-# ${fancyDate}\n${courseName}\n`;
+  const out = boardHeader + `${lines.join("\n")}\n\`\`\`\n${table}\n\`\`\``
     + (missingLines.length > 0 ? `\n${missingLines.join("\n")}` : "")
     + recordLine;
   if (!("send" in writeChannel)) {
@@ -240,9 +242,28 @@ async function räkna(interaction: ChatInputCommandInteraction) {
     await interaction.reply({ content: "Write channel is not text-based.", flags: MessageFlags.Ephemeral });
     return;
   }
-  const sent = await writeChannel.send(out);
-  logInfo("Sent aggregated score message", { messageId: sent.id, channelId: writeChannel.id, interactionId: interaction.id });
-  await interaction.reply({ content: `Skickade ett meddelande med ${lines.length} resultat.`, flags: MessageFlags.Ephemeral });
+
+  // A rerun for the same round (e.g. a mistyped score was corrected) edits the previous
+  // board instead of posting a duplicate an admin would have to delete - but only while
+  // that board is still the latest message in the channel
+  const botId = discordClient.user?.id;
+  const lastWriteMessage = (await writeChannel.messages.fetch({ limit: 1 })).first();
+  const previousBoard = botId !== undefined
+    && lastWriteMessage?.author.id === botId
+    && lastWriteMessage.content.startsWith(boardHeader)
+    ? lastWriteMessage
+    : undefined;
+
+  if (previousBoard) {
+    await previousBoard.edit(out);
+    logInfo("Edited previous score message", { messageId: previousBoard.id, channelId: writeChannel.id, interactionId: interaction.id });
+    await interaction.reply({ content: `Uppdaterade det senaste resultatet med ${lines.length} resultat.`, flags: MessageFlags.Ephemeral });
+  }
+  else {
+    const sent = await writeChannel.send(out);
+    logInfo("Sent aggregated score message", { messageId: sent.id, channelId: writeChannel.id, interactionId: interaction.id });
+    await interaction.reply({ content: `Skickade ett meddelande med ${lines.length} resultat.`, flags: MessageFlags.Ephemeral });
+  }
 }
 
 function getUserScore(userId: string, messages: Message[], courseMessage: Message, course: Course | undefined): {
