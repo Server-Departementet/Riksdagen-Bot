@@ -3,11 +3,9 @@ import path from "node:path";
 import type { ChatInputCommandInteraction, Message } from "discord.js";
 import { Client as DiscordClient, Events, GatewayIntentBits, MessageFlags, REST, Routes, SlashCommandBuilder } from "discord.js";
 import type { Course, HoleScore } from "./courses";
-import { buildScoreTable, findCourse, formatRelative, holeScoreValue, loadCourses, missingHoles, relativeToPar } from "./courses";
-
-const COURSE_NAME_MIN_LENGTH = 3;
-const COURSE_NAME_MAX_LENGTH = 30;
-const SINGLE_HOLE_MAX_SCORE = 30; // Par on Domarringen is 27
+import { buildScoreTable, courseTotal, findCourse, formatRelative, holeScoreValue, isCourseMessage, loadCourses, missingHoles, parseScoreLine, relativeToPar } from "./courses";
+import type { RecordEntry } from "./records";
+import { applyRoundResults, formatRecords, parseRecords } from "./records";
 
 // Logger utility
 function log(level: "INFO" | "WARN" | "ERROR", message: string, data?: Record<string, unknown>) {
@@ -44,6 +42,10 @@ if (!process.env.DISCGOLF_READ_CHANNEL_ID) throw new Error("DISCGOLF_READ_CHANNE
 const DISCGOLF_READ_CHANNEL_ID = process.env.DISCGOLF_READ_CHANNEL_ID;
 if (!process.env.DISCGOLF_WRITE_CHANNEL_ID) throw new Error("DISCGOLF_WRITE_CHANNEL_ID is not set in environment variables");
 const DISCGOLF_WRITE_CHANNEL_ID = process.env.DISCGOLF_WRITE_CHANNEL_ID;
+if (!process.env.DISCGOLF_RECORD_CHANNEL_ID) throw new Error("DISCGOLF_RECORD_CHANNEL_ID is not set in environment variables");
+const DISCGOLF_RECORD_CHANNEL_ID = process.env.DISCGOLF_RECORD_CHANNEL_ID;
+if (!process.env.DISCGOLF_RECORD_MESSAGE_ID) throw new Error("DISCGOLF_RECORD_MESSAGE_ID is not set in environment variables");
+const DISCGOLF_RECORD_MESSAGE_ID = process.env.DISCGOLF_RECORD_MESSAGE_ID;
 
 const discordClient = new DiscordClient({
   intents: [
@@ -167,7 +169,7 @@ async function räkna(interaction: ChatInputCommandInteraction) {
   logInfo("Messages fetched", { count: allMessages.size, interactionId: interaction.id });
 
   const courseMessage = allMessages.filter(m =>
-    isCourseMessage(m.content),
+    isCourseMessage(courses, m.content),
   ).first();
 
   if (!courseMessage) {
@@ -217,8 +219,21 @@ async function räkna(interaction: ChatInputCommandInteraction) {
       return missing.length > 0 ? `<@${memberId}> har missat att skriva hål ${missing.join(", ")}` : undefined;
     })
     .filter((line): line is string => line !== undefined);
+  // Records survive on Discord as a bot-owned message, so a failed update must not eat the scoreboard
+  let recordLine = "";
+  if (course) {
+    try {
+      const newCourseBest = await updateCourseRecords(course, courseMessage, results);
+      if (newCourseBest) recordLine = `\n🏆 Nytt banrekord: ${newCourseBest.points} av <@${newCourseBest.userId}>!`;
+    }
+    catch (err) {
+      logError("Failed to update course records", err, { course: course.name, interactionId: interaction.id });
+    }
+  }
+
   const out = `-# ${fancyDate}\n${courseMessage.content}\n${lines.join("\n")}\n\`\`\`\n${table}\n\`\`\``
-    + (missingLines.length > 0 ? `\n${missingLines.join("\n")}` : "");
+    + (missingLines.length > 0 ? `\n${missingLines.join("\n")}` : "")
+    + recordLine;
   if (!("send" in writeChannel)) {
     logError("Write channel is not text-based", undefined, { channelId: writeChannel.id, interactionId: interaction.id });
     await interaction.reply({ content: "Write channel is not text-based.", flags: MessageFlags.Ephemeral });
@@ -229,18 +244,6 @@ async function räkna(interaction: ChatInputCommandInteraction) {
   await interaction.reply({ content: `Skickade ett meddelande med ${lines.length} resultat.`, flags: MessageFlags.Ephemeral });
 }
 
-function isCourseMessage(content: string): boolean {
-  if (findCourse(courses, content)) return true;
-  const isOnlyString = /^[a-zA-ZåäöÅÄÖ]+$/.test(content);
-  const lengthOk = content.length >= COURSE_NAME_MIN_LENGTH
-    && content.length <= COURSE_NAME_MAX_LENGTH;
-  return isOnlyString && lengthOk;
-}
-
-// "<hole id> <score>" where the hole id is a number optionally prefixed by letters, e.g. "5 11" or "X1 3".
-// A non-numeric score ("5 dnf", "5 fyfan") marks the hole as not finished.
-const scoreLineRegex = /^([a-zA-ZåäöÅÄÖ]*\d+)\s+(\S.*)$/;
-
 function getUserScore(userId: string, messages: Message[], courseMessage: Message, course: Course | undefined): {
   points: number;
   score: Record<string, HoleScore>;
@@ -250,33 +253,40 @@ function getUserScore(userId: string, messages: Message[], courseMessage: Messag
   for (const message of messages) {
     if (message.author.id !== userId) continue;
     if (message.createdTimestamp <= courseMessage.createdTimestamp) continue;
-    if (isCourseMessage(message.content)) continue;
+    if (isCourseMessage(courses, message.content)) continue;
 
     for (const line of message.content.split("\n")) {
-      const match = scoreLineRegex.exec(line.trim());
-      const [, hole, pointString] = match ?? [];
-      if (!hole || !pointString) continue;
-
-      if (!/^\d+$/.test(pointString)) {
-        score[hole] = "dnf";
-        logInfo("Parsed DNF line", { messageId: message.id, hole, raw: pointString });
-        continue;
-      }
-
-      const parsedPoint = parseInt(pointString, 10);
-      if (parsedPoint > SINGLE_HOLE_MAX_SCORE) {
-        logWarn("Skipping score line (score above max)", { messageId: message.id, hole, parsedPoint });
-        continue;
-      }
-
-      score[hole] = parsedPoint;
-      logInfo("Parsed score line", { messageId: message.id, hole, parsedPoint });
+      const parsed = parseScoreLine(line);
+      if (!parsed) continue;
+      score[parsed.holeId] = parsed.points;
+      logInfo("Parsed score line", { messageId: message.id, hole: parsed.holeId, points: parsed.points });
     }
   }
 
   const points = Object.entries(score).reduce((sum, [holeId, holeScore]) => sum + (holeScoreValue(course, holeId, holeScore) ?? 0), 0);
   logInfo("Finished calculating user score", { userId, totalPoints: points, entries: score });
   return { points, score };
+}
+
+/** Folds the round's full-course results into the record message; returns the new course best if one was set. */
+async function updateCourseRecords(course: Course, courseMessage: Message, results: { memberId: string; score: Record<string, HoleScore> }[]): Promise<RecordEntry | undefined> {
+  const roundDate = new Date(courseMessage.createdTimestamp).toLocaleDateString("sv-SE", { timeZone: "Europe/Stockholm" });
+  const eligible: RecordEntry[] = results
+    .map(({ memberId, score }) => ({ userId: memberId, points: courseTotal(course, score), date: roundDate }))
+    .filter((entry): entry is RecordEntry => entry.points !== undefined);
+  if (eligible.length === 0) return undefined;
+
+  const recordChannel = await discordClient.channels.fetch(DISCGOLF_RECORD_CHANNEL_ID);
+  if (!recordChannel?.isTextBased()) throw new Error("Record channel not found or is not text-based");
+  const recordMessage = await recordChannel.messages.fetch(DISCGOLF_RECORD_MESSAGE_ID);
+
+  const records = parseRecords(recordMessage.content);
+  const { improved, newCourseBest } = applyRoundResults(records, course.name, eligible);
+  if (improved) {
+    await recordMessage.edit(formatRecords(records));
+    logInfo("Updated record message", { course: course.name, eligibleCount: eligible.length, newBest: newCourseBest?.points });
+  }
+  return newCourseBest;
 }
 
 function formatScoreSuffix(course: Course | undefined, score: Record<string, HoleScore>): string {

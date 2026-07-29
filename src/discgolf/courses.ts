@@ -15,10 +15,18 @@ export type Course = {
   holes: Hole[];
 };
 
+function titleCase(name: string): string {
+  return name
+    .split(" ")
+    .map((word) => word.charAt(0).toLocaleUpperCase("sv-SE") + word.slice(1))
+    .join(" ");
+}
+
 /**
  * Course file format: first non-empty line is the course name, optionally
  * followed by comma separated aliases ("rosendal, rosen, dgb rosendal").
  * Every following line is "<hole id> <par>", e.g. "1 3" or "X1 3".
+ * The name is title-cased for display; matching is case-insensitive anyway.
  */
 export function parseCourseFile(content: string, sourceName: string): Course {
   const lines = content
@@ -43,7 +51,7 @@ export function parseCourseFile(content: string, sourceName: string): Course {
     holes.push({ id, par: parseInt(parString, 10) });
   }
 
-  return { name, aliases, holes };
+  return { name: titleCase(name), aliases, holes };
 }
 
 function courseNames(course: Course): string[] {
@@ -67,6 +75,51 @@ export function loadCourses(dir: string): Course[] {
 export function findCourse(courses: Course[], name: string): Course | undefined {
   const normalized = name.trim().toLowerCase();
   return courses.find((course) => courseNames(course).some((courseName) => courseName.toLowerCase() === normalized));
+}
+
+const COURSE_NAME_MIN_LENGTH = 3;
+const COURSE_NAME_MAX_LENGTH = 30;
+
+/** A message that starts a new round: a known course, or a single word that looks like a course name. */
+export function isCourseMessage(courses: Course[], content: string): boolean {
+  if (findCourse(courses, content)) return true;
+  const isOnlyString = /^[a-zA-ZåäöÅÄÖ]+$/.test(content);
+  return isOnlyString
+    && content.length >= COURSE_NAME_MIN_LENGTH
+    && content.length <= COURSE_NAME_MAX_LENGTH;
+}
+
+export const SINGLE_HOLE_MAX_SCORE = 30; // Par on Domarringen is 27
+
+// "<hole id> <score>" where the hole id is a number optionally prefixed by letters, e.g. "5 11" or "X1 3".
+// A non-numeric score ("5 dnf", "5 fyfan") marks the hole as not finished.
+const scoreLineRegex = /^([a-zA-ZåäöÅÄÖ]*\d+)\s+(\S.*)$/;
+
+export function parseScoreLine(line: string): { holeId: string; points: HoleScore } | undefined {
+  const match = scoreLineRegex.exec(line.trim());
+  const [, holeId, pointString] = match ?? [];
+  if (!holeId || !pointString) return undefined;
+  if (!/^\d+$/.test(pointString)) return { holeId, points: "dnf" };
+  const parsed = parseInt(pointString, 10);
+  if (parsed > SINGLE_HOLE_MAX_SCORE) return undefined;
+  return { holeId, points: parsed };
+}
+
+/**
+ * Total strokes over the course's numbered holes, for record comparisons.
+ * Letter-prefixed holes (X1, X2) are extras and excluded. A DNF counts as
+ * par + 4. Returns undefined when any numbered hole is unrecorded, so a
+ * partial round can never set a record.
+ */
+export function courseTotal(course: Course, score: Record<string, HoleScore>): number | undefined {
+  let total = 0;
+  for (const hole of course.holes.filter((h) => /^\d+$/.test(h.id))) {
+    const points = recordedScore(score, hole.id);
+    const value = points === undefined ? undefined : holeScoreValue(course, hole.id, points);
+    if (value === undefined) return undefined;
+    total += value;
+  }
+  return total;
 }
 
 function findHole(course: Course, holeId: string): Hole | undefined {

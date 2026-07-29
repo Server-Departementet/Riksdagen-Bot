@@ -4,19 +4,22 @@ import path from "node:path";
 import {
   buildScoreTable,
   coursePar,
+  courseTotal,
   findCourse,
   formatRelative,
   holeScoreValue,
+  isCourseMessage,
   loadCourses,
   missingHoles,
   parseCourseFile,
+  parseScoreLine,
   relativeToPar,
 } from "./courses";
 
 await test("parseCourseFile parses name and holes", () => {
   const course = parseCourseFile("ultuna\n1 3\n2 4\nX1 3\n", "ultuna");
 
-  assert.equal(course.name, "ultuna");
+  assert.equal(course.name, "Ultuna");
   assert.deepEqual(course.aliases, []);
   assert.deepEqual(course.holes, [
     { id: "1", par: 3 },
@@ -28,15 +31,15 @@ await test("parseCourseFile parses name and holes", () => {
 await test("parseCourseFile parses comma separated aliases in the name line", () => {
   const course = parseCourseFile("rosendal, rosen, dgb rosendal\n1 3\n", "rosendal");
 
-  assert.equal(course.name, "rosendal");
+  assert.equal(course.name, "Rosendal");
   assert.deepEqual(course.aliases, ["rosen", "dgb rosendal"]);
 });
 
 await test("findCourse matches aliases case-insensitively", () => {
   const courses = [parseCourseFile("rosendal, rosen, dgb rosendal\n1 3\n", "rosendal")];
 
-  assert.equal(findCourse(courses, "Rosen")?.name, "rosendal");
-  assert.equal(findCourse(courses, "DGB Rosendal")?.name, "rosendal");
+  assert.equal(findCourse(courses, "Rosen")?.name, "Rosendal");
+  assert.equal(findCourse(courses, "DGB Rosendal")?.name, "Rosendal");
   assert.equal(findCourse(courses, "rosendalen"), undefined);
 });
 
@@ -60,6 +63,33 @@ await test("loadCourses reads every checked-in course file", () => {
   assert.ok(ultuna.holes.some((hole) => hole.id === "X1"));
 
   assert.equal(findCourse(courses, "finnsinte"), undefined);
+});
+
+await test("parseScoreLine parses scores and dnf, and rejects junk", () => {
+  assert.deepEqual(parseScoreLine("5 11"), { holeId: "5", points: 11 });
+  assert.deepEqual(parseScoreLine("X1 3"), { holeId: "X1", points: 3 });
+  assert.deepEqual(parseScoreLine("4 dnf"), { holeId: "4", points: "dnf" });
+  assert.deepEqual(parseScoreLine("4 fyfan"), { holeId: "4", points: "dnf" });
+  assert.equal(parseScoreLine("5 45"), undefined); // above max plausible score
+  assert.equal(parseScoreLine("13"), undefined);
+  assert.equal(parseScoreLine("hejsan hoppsan"), undefined);
+});
+
+await test("isCourseMessage accepts known courses and course-like words", () => {
+  const courses = [parseCourseFile("rosendal, rosen, dgb rosendal\n1 3\n", "rosendal")];
+
+  assert.equal(isCourseMessage(courses, "DGB Rosendal"), true); // known multi-word alias
+  assert.equal(isCourseMessage(courses, "Ultuna"), true); // unknown but course-like
+  assert.equal(isCourseMessage(courses, "vi kör kl 13"), false);
+});
+
+await test("courseTotal sums numbered holes only and requires all of them", () => {
+  const course = parseCourseFile("bana\n1 3\n2 4\nX1 3", "bana");
+
+  assert.equal(courseTotal(course, { "1": 4, "2": 5 }), 9);
+  assert.equal(courseTotal(course, { "1": 4, "2": 5, "X1": 10 }), 9); // extras excluded
+  assert.equal(courseTotal(course, { "1": 4, "2": "dnf" }), 4 + 4 + 4); // dnf = par + 4
+  assert.equal(courseTotal(course, { "1": 4 }), undefined); // partial round
 });
 
 await test("formatRelative formats over, under, and even par", () => {
