@@ -5,11 +5,19 @@
  * best, lowest first, so the top line is the course record.
  */
 
+/** Celebration marker set when a score actually changes: personal record or new course record. */
+export type RecordFlag = "pr" | "banrekord";
+
 export type RecordEntry = {
   userId: string;
   points: number;
   /** YYYY-MM-DD (Stockholm time) of the round. */
   date: string;
+  /**
+   * Only /räkna runs that change a score rewrite flags (clearing the previous
+   * ones); reformatting and no-change counts pass them through untouched.
+   */
+  flag?: RecordFlag;
 };
 
 export type CourseRecords = { course: string; entries: RecordEntry[] }[];
@@ -18,7 +26,18 @@ const RECORDS_TITLE = "## Banrekord";
 const RECORDS_SUBTEXT = "-# Uppdateras automatiskt vid /räkna";
 const courseLineRegex = /^### (.+)$/;
 // The optional token between score and mention is the player's signature emoji;
-const entryLineRegex = /^`(\d+)` (?:\S+ )?<@(\d+)> (\d{4}-\d{2}-\d{2})$/;
+const entryLineRegex = /^`(\d+)` (?:\S+ )?<@(\d+)> (\d{4}-\d{2}-\d{2})( \[.+\])?$/;
+
+const FLAG_TEXT: Record<RecordFlag, string> = {
+  pr: "[PR 🎉]",
+  banrekord: "[Banrekord!! 🥳]",
+};
+
+function flagFromText(text: string | undefined): RecordFlag | undefined {
+  if (text === FLAG_TEXT.pr) return "pr";
+  if (text === FLAG_TEXT.banrekord) return "banrekord";
+  return undefined;
+}
 
 export function formatRecords(records: CourseRecords, signatures: Record<string, string>, updatedAt: Date): string {
   const sections = [...records]
@@ -28,7 +47,8 @@ export function formatRecords(records: CourseRecords, signatures: Record<string,
         .sort((a, b) => a.points - b.points || a.date.localeCompare(b.date))
         .map((entry) => {
           const signature = signatures[entry.userId];
-          return `\`${entry.points}\`${signature ? ` ${signature}` : ""} <@${entry.userId}> ${entry.date}`;
+          const flag = entry.flag ? ` ${FLAG_TEXT[entry.flag]}` : "";
+          return `\`${entry.points}\`${signature ? ` ${signature}` : ""} <@${entry.userId}> ${entry.date}${flag}`;
         });
       return [`### ${course}`, ...lines].join("\n");
     });
@@ -48,9 +68,10 @@ export function parseRecords(content: string): CourseRecords {
       continue;
     }
     const entryMatch = entryLineRegex.exec(line);
-    const [, points, userId, date] = entryMatch ?? [];
+    const [, points, userId, date, flagText] = entryMatch ?? [];
     if (!current || !points || !userId || !date) continue;
-    current.entries.push({ userId, points: parseInt(points, 10), date });
+    const flag = flagFromText(flagText?.trim());
+    current.entries.push({ userId, points: parseInt(points, 10), date, ...flag ? { flag } : {} });
   }
   return records;
 }
@@ -77,23 +98,35 @@ export function applyRoundResults(records: CourseRecords, courseName: string, re
     ? Math.min(...section.entries.map((entry) => entry.points))
     : undefined;
 
-  let improved = false;
+  const improvedEntries: RecordEntry[] = [];
   for (const result of results) {
     const existing = section.entries.find((entry) => entry.userId === result.userId);
     if (!existing) {
-      section.entries.push({ ...result });
-      improved = true;
+      const entry = { ...result };
+      section.entries.push(entry);
+      improvedEntries.push(entry);
     }
     else if (result.points < existing.points) {
       existing.points = result.points;
       existing.date = result.date;
-      improved = true;
+      improvedEntries.push(existing);
     }
+  }
+
+  // An actual score change moves the celebration flags: clear the old ones, flag
+  // every improvement as a PR. No change means the previous flags stay put.
+  if (improvedEntries.length > 0) {
+    for (const s of records) {
+      for (const entry of s.entries) delete entry.flag;
+    }
+    for (const entry of improvedEntries) entry.flag = "pr";
   }
 
   const best = [...section.entries].sort((a, b) => a.points - b.points || a.date.localeCompare(b.date))[0];
   if (best && (previousBest === undefined || best.points < previousBest)) {
-    return { improved, newCourseBest: best };
+    // A new course best is always one of this round's improvements
+    best.flag = "banrekord";
+    return { improved: improvedEntries.length > 0, newCourseBest: best };
   }
-  return { improved };
+  return { improved: improvedEntries.length > 0 };
 }

@@ -73,7 +73,7 @@ await test("applyRoundResults keeps personal bests and reports a new course best
     { userId: "2", points: 43, date: "2026-06-14" },
   ]);
   assert.equal(first.improved, true);
-  assert.deepEqual(first.newCourseBest, { userId: "2", points: 43, date: "2026-06-14" });
+  assert.deepEqual(first.newCourseBest, { userId: "2", points: 43, date: "2026-06-14", flag: "banrekord" });
 
   // Worse or equal results change nothing
   const worse = applyRoundResults(records, "rosendal", [{ userId: "1", points: 45, date: "2026-07-01" }]);
@@ -87,13 +87,59 @@ await test("applyRoundResults keeps personal bests and reports a new course best
 
   // Beating the course record is reported; the section adopts the caller's casing
   const best = applyRoundResults(records, "Rosendal", [{ userId: "1", points: 41, date: "2026-07-20" }]);
-  assert.deepEqual(best.newCourseBest, { userId: "1", points: 41, date: "2026-07-20" });
+  assert.deepEqual(best.newCourseBest, { userId: "1", points: 41, date: "2026-07-20", flag: "banrekord" });
 
   assert.deepEqual(records, [{
     course: "Rosendal",
     entries: [
-      { userId: "1", points: 41, date: "2026-07-20" },
+      { userId: "1", points: 41, date: "2026-07-20", flag: "banrekord" },
       { userId: "2", points: 43, date: "2026-06-14" },
     ],
   }]);
+});
+
+await test("record flags render, round-trip, and survive reformatting", () => {
+  const records: CourseRecords = [{
+    course: "Rosendal",
+    entries: [
+      { userId: "1", points: 41, date: "2026-07-20", flag: "banrekord" },
+      { userId: "2", points: 43, date: "2026-06-15", flag: "pr" },
+    ],
+  }];
+
+  const content = formatRecords(records, {}, new Date("2026-07-29T12:00:00+02:00"));
+  assert.ok(content.includes("`41` <@1> 2026-07-20 [Banrekord!! 🥳]"));
+  assert.ok(content.includes("`43` <@2> 2026-06-15 [PR 🎉]"));
+  // parse → format (what /formatera does) must not lose or move flags
+  assert.deepEqual(parseRecords(content), records);
+});
+
+await test("a count without score changes leaves existing flags untouched", () => {
+  const records: CourseRecords = [{
+    course: "Rosendal",
+    entries: [{ userId: "1", points: 41, date: "2026-07-20", flag: "banrekord" }],
+  }];
+
+  const result = applyRoundResults(records, "Rosendal", [{ userId: "1", points: 41, date: "2026-07-29" }]);
+  assert.equal(result.improved, false);
+  assert.equal(records[0]?.entries[0]?.flag, "banrekord");
+});
+
+await test("a score change moves the flags: old ones clear, improvements get PR", () => {
+  const records: CourseRecords = [
+    { course: "Rosendal", entries: [{ userId: "1", points: 41, date: "2026-07-20", flag: "banrekord" }] },
+    { course: "Röbo", entries: [{ userId: "2", points: 45, date: "2026-07-27", flag: "pr" }] },
+  ];
+
+  // A PR on Röbo that doesn't beat the course record
+  const result = applyRoundResults(records, "Röbo", [
+    { userId: "1", points: 46, date: "2026-07-29" },
+    { userId: "2", points: 50, date: "2026-07-29" },
+  ]);
+  assert.equal(result.improved, true);
+  assert.equal(result.newCourseBest, undefined);
+  // New PR is flagged; every older flag (other courses included) is cleared
+  assert.deepEqual(records[1]?.entries.find((e) => e.userId === "1")?.flag, "pr");
+  assert.equal(records[1]?.entries.find((e) => e.userId === "2")?.flag, undefined);
+  assert.equal(records[0]?.entries[0]?.flag, undefined);
 });
