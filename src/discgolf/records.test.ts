@@ -47,6 +47,23 @@ await test("parseRecords of the seed message is empty", () => {
   assert.deepEqual(parseRecords("uwu <3"), []);
 });
 
+await test("formatRecords puts the oldest score on top in a tie", () => {
+  const records: CourseRecords = [{
+    course: "Rosendal",
+    entries: [
+      { userId: "2", points: 42, date: "2026-07-24" },
+      { userId: "1", points: 42, date: "2026-07-20" },
+    ],
+  }];
+
+  const lines = formatRecords(records, {}, new Date("2026-07-29T12:00:00+02:00")).split("\n");
+  const tieLines = lines.filter((line) => line.startsWith("`42`"));
+  assert.deepEqual(tieLines, [
+    "`42` <@1> 2026-07-20",
+    "`42` <@2> 2026-07-24",
+  ]);
+});
+
 await test("applyRoundResults keeps personal bests and reports a new course best", () => {
   const records: CourseRecords = [];
 
