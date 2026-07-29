@@ -6,7 +6,7 @@ import fs from "node:fs";
 import { PrismaClient } from "@/lib/prisma/generated/client";
 import aliases from "../../user-aliases.json" with { type: "json" };
 import { makeMariaDBAdapter } from "@/lib/prisma";
-import { isMultiSpeakerQuote, splitCustomQuoteMeta, stripCustomQuoteMeta } from "./quote-utils";
+import { isMultiSpeakerQuote, quoteAttributionSplitRegex, splitCustomQuoteMeta, stripCustomQuoteMeta, wordMatchRegex } from "./quote-utils";
 import { Client as DiscordClient, GatewayIntentBits } from "discord.js";
 import { attachmentDir, getAttachmentPath } from "./types";
 import { toQuoteData } from "./quote-db";
@@ -115,7 +115,7 @@ function extractContext(quote: TrimmedMessage): Quote | null {
 
       // If last line, split on the last "-" and give the right to the meta but still provide the entire line to the body like for all other lines
       if (i === lines.length - 1) {
-        const brokenQuote = line.split(/(?<="[^"]+?"\s*)-(?=\s*\w+)/).map(s => s.trim());
+        const brokenQuote = line.split(quoteAttributionSplitRegex).map(s => s.trim());
         if (brokenQuote.length !== 2) {
           throw new Error("Failed to split multi-speaker quote line into body and meta: " + line + " (full content: " + cleanedContent + ")");
         }
@@ -130,7 +130,7 @@ function extractContext(quote: TrimmedMessage): Quote | null {
   }
   else {
     // Regex finds the "-" between the quote body and the quotee to split on
-    const brokenQuote = cleanedContent.split(/(?<="[^"]+?"\s*)-(?=\s*\w+)/).map(s => s.trim());
+    const brokenQuote = cleanedContent.split(quoteAttributionSplitRegex).map(s => s.trim());
     if (brokenQuote.length !== 2) {
       console.warn("Could not parse quote content, skipping quote ID " + quote.id + ": " + cleanedContent);
       throw new Error("Failed to split quote into body and meta: " + cleanedContent);
@@ -238,17 +238,15 @@ function extractContext(quote: TrimmedMessage): Quote | null {
   }
   if (Object.keys(aliases).some(alias => quotee.includes(alias))) {
     for (const [alias, realName] of Object.entries(aliases)) {
-      const regex = new RegExp(`\\b${alias}\\b`, "g");
-      quotee = quotee.replace(regex, realName);
+      quotee = quotee.replace(wordMatchRegex([alias]), realName);
     }
   }
   if (context) {
     for (const [alias, realName] of Object.entries(aliases)) {
-      const regex = new RegExp(`\\b${alias}\\b`, "g");
-      context = context.replace(regex, realName);
+      context = context.replace(wordMatchRegex([alias]), realName);
     }
   }
-  body = body.replace(new RegExp(`\\b(${Object.keys(aliases).join("|")})\\b`, "g"), (match) => aliases[match] as string);
+  body = body.replace(wordMatchRegex(Object.keys(aliases)), (match) => aliases[match] as string);
 
   // For our purposes we want to link quotees to user IDs where possible for easier use later
   const quoteeId = Object.entries(nameVariants).find(([, variants]) =>

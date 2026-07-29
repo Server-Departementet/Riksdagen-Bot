@@ -80,6 +80,18 @@ export function getTimestampFromDiscordLink(link: string): number | null {
   return Number((BigInt(snowflake) >> 22n) + 1420070400000n);
 }
 
+// \w and \b only match ASCII in JS regexes (even with the u flag), so names like
+// Åsa or Örjan need the explicit Unicode equivalent [\p{L}\p{N}_] instead.
+
+/** Splits `"body" - quotee` on the attribution dash. */
+export const quoteAttributionSplitRegex = /(?<="[^"]+?"\s*)-(?=\s*[\p{L}\p{N}_])/u;
+
+/** A global regex matching any of `names` as a whole word, with Unicode-aware boundaries. */
+export function wordMatchRegex(names: string[]): RegExp {
+  const escaped = names.map(n => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  return new RegExp(`(?<![\\p{L}\\p{N}_])(?:${escaped.join("|")})(?![\\p{L}\\p{N}_])`, "gu");
+}
+
 export function isMultiSpeakerQuote(content: string): boolean {
   const isMultiLine =
     content.includes("\n")

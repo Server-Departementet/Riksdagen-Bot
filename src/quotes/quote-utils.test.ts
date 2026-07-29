@@ -2,8 +2,10 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   getTimestampFromDiscordLink,
+  quoteAttributionSplitRegex,
   splitCustomQuoteMeta,
   stripCustomQuoteMeta,
+  wordMatchRegex,
 } from "./quote-utils";
 
 await test("splitCustomQuoteMeta parses leading metadata", () => {
@@ -37,6 +39,28 @@ await test("splitCustomQuoteMeta keeps the fields that are actually set", () => 
 await test("stripCustomQuoteMeta removes metadata prefix only", () => {
   const content = `[[{"authorId":"123"}]]\n"Hej" - Axel`;
   assert.equal(stripCustomQuoteMeta(content), "\"Hej\" - Axel");
+});
+
+await test("quoteAttributionSplitRegex splits attribution for ASCII names", () => {
+  const parts = "\"Hej\" - Axel".split(quoteAttributionSplitRegex).map(s => s.trim());
+  assert.deepEqual(parts, ["\"Hej\"", "Axel"]);
+});
+
+await test("quoteAttributionSplitRegex splits attribution for names starting with non-ASCII letters", () => {
+  const parts = "\"Nämen\" - Åsa".split(quoteAttributionSplitRegex).map(s => s.trim());
+  assert.deepEqual(parts, ["\"Nämen\"", "Åsa"]);
+});
+
+await test("quoteAttributionSplitRegex ignores dashes inside the quote body", () => {
+  const parts = "\"Nå - kanske\" - Örjan".split(quoteAttributionSplitRegex).map(s => s.trim());
+  assert.deepEqual(parts, ["\"Nå - kanske\"", "Örjan"]);
+});
+
+await test("wordMatchRegex matches whole words only, with Unicode boundaries", () => {
+  assert.equal("Åsa och jag".replace(wordMatchRegex(["Åsa"]), "Agnes"), "Agnes och jag");
+  // "Åsan" contains "Åsa" but is a different word; ASCII \b would have replaced it
+  assert.equal("Åsan och jag".replace(wordMatchRegex(["Åsa"]), "Agnes"), "Åsan och jag");
+  assert.equal("Viggos mor".replace(wordMatchRegex(["Viggo"]), "Vena"), "Viggos mor");
 });
 
 await test("getTimestampFromDiscordLink returns null for invalid link", () => {
