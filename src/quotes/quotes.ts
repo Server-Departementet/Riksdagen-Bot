@@ -133,7 +133,7 @@ function extractContext(quote: TrimmedMessage): Quote | null {
     const brokenQuote = cleanedContent.split(quoteAttributionSplitRegex).map(s => s.trim());
     if (brokenQuote.length !== 2) {
       console.warn("Could not parse quote content, skipping quote ID " + quote.id + ": " + cleanedContent);
-      throw new Error("Failed to split quote into body and meta: " + cleanedContent);
+      return null;
     }
     [body, meta] = [brokenQuote[0] ?? null, brokenQuote[1] ?? null];
 
