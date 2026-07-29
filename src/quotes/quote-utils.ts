@@ -2,6 +2,13 @@ import type { Quote } from "./types";
 
 export type CustomQuoteMeta = Partial<Pick<Quote, "authorId" | "link" | "sender" | "createdTimestamp">>;
 
+/** A trimmed string, or undefined when the value is missing or blank. */
+function nonBlank(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed === "" ? undefined : trimmed;
+}
+
 export function isCustomQuoteMeta(obj: unknown): obj is CustomQuoteMeta {
   if (typeof obj !== "object" || obj === null) return false;
 
@@ -34,18 +41,22 @@ export function splitCustomQuoteMeta(content: string): { meta?: CustomQuoteMeta;
       throw new Error("Parsed meta does not have the required structure: " + metaJson);
     }
     if (metaObject && typeof metaObject === "object") {
-      const maybeAuthorId = typeof metaObject.authorId === "string" ? metaObject.authorId : undefined;
-      const maybeSender = typeof metaObject.sender === "string" ? metaObject.sender : undefined;
-      const maybeLink = typeof metaObject.link === "string" ? metaObject.link : undefined;
+      // A blank field means "not set" — e.g. `authorId: ""` on a quote imported from
+      // another server has to fall through to whoever posted it here
+      const maybeAuthorId = nonBlank(metaObject.authorId);
+      const maybeSender = nonBlank(metaObject.sender);
+      const maybeLink = nonBlank(metaObject.link);
 
-      meta = {
-        ...(typeof maybeAuthorId === "string" ? { authorId: maybeAuthorId } : {}),
-        ...(typeof maybeSender === "string" ? { sender: maybeSender } : {}),
-        ...(typeof maybeLink === "string" ? {
+      const parsed: CustomQuoteMeta = {
+        ...(maybeAuthorId ? { authorId: maybeAuthorId } : {}),
+        ...(maybeSender ? { sender: maybeSender } : {}),
+        ...(maybeLink ? {
           link: maybeLink,
           createdTimestamp: getTimestampFromDiscordLink(maybeLink) ?? undefined,
         } : {}),
       };
+
+      meta = Object.keys(parsed).length > 0 ? parsed : undefined;
     }
   }
   catch (error) {

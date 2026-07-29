@@ -90,9 +90,12 @@ function extractContext(quote: TrimmedMessage): Quote | null {
   const { meta: customMeta, content: cleanedContent } = splitCustomQuoteMeta(quote.content);
 
   const resolvedAuthorId = customMeta?.authorId ?? quote.authorId;
-  const sender = users[resolvedAuthorId] ?? { name: resolvedAuthorId };
-  if (typeof sender?.name !== "string") {
-    throw new Error("Could not find user with ID " + resolvedAuthorId + " for quote ID " + quote.id);
+  // Imported quotes can name an author we have no user row for, so fall back to the
+  // name carried in the custom meta before giving up and showing the raw ID
+  const senderName = users[resolvedAuthorId]?.name ?? customMeta?.sender ?? resolvedAuthorId;
+  const sender = { name: senderName };
+  if (typeof sender.name !== "string" || sender.name.trim() === "") {
+    throw new Error("Could not resolve a sender for quote ID " + quote.id + " (author ID " + resolvedAuthorId + ")");
   }
 
   let body: string | null = null;

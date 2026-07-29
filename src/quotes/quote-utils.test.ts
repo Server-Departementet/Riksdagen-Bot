@@ -13,8 +13,25 @@ await test("splitCustomQuoteMeta parses leading metadata", () => {
   assert.deepEqual(result.meta, {
     authorId: "123",
     link: "https://discord.com/channels/1/2/175928847299117063",
+    createdTimestamp: getTimestampFromDiscordLink("https://discord.com/channels/1/2/175928847299117063") ?? undefined,
   });
   assert.equal(result.content, "\"Hi\" - Vena");
+});
+
+await test("splitCustomQuoteMeta treats a blank authorId as unset", () => {
+  const content = `[[{"authorId":""}]]\n"Hej" - Axel`;
+  const result = splitCustomQuoteMeta(content);
+
+  // An imported quote with no original author has to fall through to whoever posted it here
+  assert.equal(result.meta, undefined);
+  assert.equal(result.content, "\"Hej\" - Axel");
+});
+
+await test("splitCustomQuoteMeta keeps the fields that are actually set", () => {
+  const content = `[[{"authorId":"  ","sender":" Vena "}]]\n"Hej" - Axel`;
+  const result = splitCustomQuoteMeta(content);
+
+  assert.deepEqual(result.meta, { sender: "Vena" });
 });
 
 await test("stripCustomQuoteMeta removes metadata prefix only", () => {
