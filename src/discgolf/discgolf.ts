@@ -244,14 +244,13 @@ async function räkna(interaction: ChatInputCommandInteraction) {
   }
 
   // A rerun for the same round (e.g. a mistyped score was corrected) edits the previous
-  // board instead of posting a duplicate an admin would have to delete - but only while
-  // that board is still the latest message in the channel
+  // board instead of posting a duplicate an admin would have to delete. The header
+  // includes the round's start time, so it uniquely identifies the round's board even
+  // when newer messages (corrections, the next round) have arrived after it.
   const botId = discordClient.user?.id;
-  const lastWriteMessage = (await writeChannel.messages.fetch({ limit: 1 })).first();
+  const recentWriteMessages = await writeChannel.messages.fetch({ limit: 50 });
   const previousBoard = botId !== undefined
-    && lastWriteMessage?.author.id === botId
-    && lastWriteMessage.content.startsWith(boardHeader)
-    ? lastWriteMessage
+    ? recentWriteMessages.find((m) => m.author.id === botId && m.content.startsWith(boardHeader))
     : undefined;
 
   if (previousBoard) {
