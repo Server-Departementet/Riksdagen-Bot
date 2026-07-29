@@ -19,7 +19,7 @@ const RECORDS_SUBTEXT = "-# Uppdateras automatiskt vid /räkna";
 const courseLineRegex = /^### (.+)$/;
 const entryLineRegex = /^`(\d+)` <@(\d+)> (\d{4}-\d{2}-\d{2})$/;
 
-export function formatRecords(records: CourseRecords): string {
+export function formatRecords(records: CourseRecords, updatedAt: Date): string {
   const sections = [...records]
     .sort((a, b) => a.course.localeCompare(b.course, "sv-SE"))
     .map(({ course, entries }) => {
@@ -28,7 +28,8 @@ export function formatRecords(records: CourseRecords): string {
         .map((entry) => `\`${entry.points}\` <@${entry.userId}> ${entry.date}`);
       return [`### ${course}`, ...lines].join("\n");
     });
-  return [RECORDS_TITLE, RECORDS_SUBTEXT, "", sections.join("\n")].join("\n");
+  const updatedLine = `-# Senast uppdaterad ${updatedAt.toLocaleString("sv-SE", { timeZone: "Europe/Stockholm", dateStyle: "short", timeStyle: "short" })}`;
+  return [RECORDS_TITLE, RECORDS_SUBTEXT, "", sections.join("\n"), "", updatedLine].join("\n");
 }
 
 /** Parses a record message back into records. Unknown lines are ignored, so a fresh seed message parses as empty. */

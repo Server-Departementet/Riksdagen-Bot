@@ -15,7 +15,7 @@ await test("formatRecords and parseRecords round-trip", () => {
     { course: "domarringen", entries: [{ userId: "3", points: 36, date: "2026-07-27" }] },
   ];
 
-  const content = formatRecords(records);
+  const content = formatRecords(records, new Date("2026-07-29T12:34:00+02:00"));
   assert.equal(content, [
     "## Banrekord",
     "-# Uppdateras automatiskt vid /räkna",
@@ -25,6 +25,8 @@ await test("formatRecords and parseRecords round-trip", () => {
     "### rosendal",
     "`41` <@1> 2026-07-20",
     "`43` <@2> 2026-06-15",
+    "",
+    "-# Senast uppdaterad 2026-07-29 12:34",
   ].join("\n"));
 
   assert.deepEqual(parseRecords(content), [

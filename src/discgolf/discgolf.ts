@@ -283,7 +283,7 @@ async function updateCourseRecords(course: Course, courseMessage: Message, resul
   const records = parseRecords(recordMessage.content);
   const { improved, newCourseBest } = applyRoundResults(records, course.name, eligible);
   if (improved) {
-    await recordMessage.edit(formatRecords(records));
+    await recordMessage.edit(formatRecords(records, new Date()));
     logInfo("Updated record message", { course: course.name, eligibleCount: eligible.length, newBest: newCourseBest?.points });
   }
   return newCourseBest;
