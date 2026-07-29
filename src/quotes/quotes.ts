@@ -202,20 +202,20 @@ function extractContext(quote: TrimmedMessage): Quote | null {
     "1334524370693128243",
     "1319605765614338118",
   ].includes(quote.id)) {
-    context = context.replace(" han ", " hon ");
+    context = context.replaceAll(" han ", " hon ");
   }
   if (body.toLowerCase().includes("han") && [
     "1199023410513182720",
     "1195078172182597672",
     "1185231830190932033",
   ].includes(quote.id)) {
-    body = body.replace(/\bHan\b/, "Hon");
+    body = body.replace(/\bHan\b/g, "Hon");
   }
   // The 🐔 clause
   if (body.toLowerCase().includes("han") && [
     "1186031426597027910",
   ].includes(quote.id)) {
-    body = body.replace(/\bHan\b/, "Hen");
+    body = body.replace(/\bHan\b/g, "Hen");
   }
 
   // Quotee normalization
