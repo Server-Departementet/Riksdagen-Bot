@@ -4,7 +4,7 @@ import type { ChatInputCommandInteraction, Message } from "discord.js";
 import { Client as DiscordClient, Events, GatewayIntentBits, MessageFlags, REST, Routes, SlashCommandBuilder } from "discord.js";
 import type { Course, HoleScore } from "./courses";
 import { buildScoreTable, courseNameFrom, courseTotal, findCourse, formatRelative, holeScoreValue, loadCourses, missingHoles, parseScoreLine, relativeToPar } from "./courses";
-import type { RecordEntry } from "./records";
+import type { CourseRecords, RecordEntry } from "./records";
 import { applyRoundResults, formatRecords, parseRecords } from "./records";
 
 // Logger utility
@@ -60,6 +60,9 @@ const commands = [
   new SlashCommandBuilder()
     .setName("räkna")
     .setDescription("Räknar poäng från senaste banan"),
+  new SlashCommandBuilder()
+    .setName("formatera")
+    .setDescription("Formaterar om banrekord-meddelandet"),
   new SlashCommandBuilder()
     .setName("ping")
     .setDescription("Svarar med pong och latens"),
@@ -117,6 +120,9 @@ async function dispatchCommands(interaction: ChatInputCommandInteraction) {
   switch (interaction.commandName) {
     case "räkna":
       await räkna(interaction);
+      return;
+    case "formatera":
+      await formatera(interaction);
       return;
     case "ping":
       await ping(interaction);
@@ -307,18 +313,35 @@ async function updateCourseRecords(course: Course, courseMessage: Message, resul
     .map(({ memberId, score }) => ({ userId: memberId, points: courseTotal(course, score), date: roundDate }))
     .filter((entry): entry is RecordEntry => entry.points !== undefined);
 
-  const recordChannel = await discordClient.channels.fetch(DISCGOLF_RECORD_CHANNEL_ID);
-  if (!recordChannel?.isTextBased()) throw new Error("Record channel not found or is not text-based");
-  const recordMessage = await recordChannel.messages.fetch(DISCGOLF_RECORD_MESSAGE_ID);
-
+  const recordMessage = await fetchRecordMessage();
   const records = parseRecords(recordMessage.content);
   const { improved, newCourseBest } = applyRoundResults(records, course.name, eligible);
   // Edited on every /räkna, improved or not - "Senast uppdaterad" doubles as proof
   // that the latest count verified the records
+  await renderRecordMessage(recordMessage, records);
+  logInfo("Updated record message", { course: course.name, eligibleCount: eligible.length, improved, newBest: newCourseBest?.points });
+  return newCourseBest;
+}
+
+/** Re-renders the record message in place: current signatures, formatting, and timestamp. */
+async function formatera(interaction: ChatInputCommandInteraction) {
+  logInfo("formatera command started", { userId: interaction.user.id, interactionId: interaction.id });
+  const recordMessage = await fetchRecordMessage();
+  const records = parseRecords(recordMessage.content);
+  await renderRecordMessage(recordMessage, records);
+  logInfo("formatera command finished", { interactionId: interaction.id });
+  await interaction.reply({ content: "Banrekord-meddelandet har formaterats om.", flags: MessageFlags.Ephemeral });
+}
+
+async function fetchRecordMessage(): Promise<Message> {
+  const recordChannel = await discordClient.channels.fetch(DISCGOLF_RECORD_CHANNEL_ID);
+  if (!recordChannel?.isTextBased()) throw new Error("Record channel not found or is not text-based");
+  return await recordChannel.messages.fetch(DISCGOLF_RECORD_MESSAGE_ID);
+}
+
+async function renderRecordMessage(recordMessage: Message, records: CourseRecords): Promise<void> {
   const signatures = await signaturesFromReactions(recordMessage);
   await recordMessage.edit(formatRecords(records, signatures, new Date()));
-  logInfo("Updated record message", { course: course.name, eligibleCount: eligible.length, improved, signatureCount: Object.keys(signatures).length, newBest: newCourseBest?.points });
-  return newCourseBest;
 }
 
 /** Each player's signature emoji is their own reaction on the record message; their first reaction wins. */

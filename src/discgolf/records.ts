@@ -18,7 +18,6 @@ const RECORDS_TITLE = "## Banrekord";
 const RECORDS_SUBTEXT = "-# Uppdateras automatiskt vid /räkna";
 const courseLineRegex = /^### (.+)$/;
 // The optional token between score and mention is the player's signature emoji;
-// it is display-only and re-derived from signatures.json on every render
 const entryLineRegex = /^`(\d+)` (?:\S+ )?<@(\d+)> (\d{4}-\d{2}-\d{2})$/;
 
 export function formatRecords(records: CourseRecords, signatures: Record<string, string>, updatedAt: Date): string {
