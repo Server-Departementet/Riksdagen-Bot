@@ -221,14 +221,14 @@ await test("buildScoreTable averages only finished holes and marks dnf-only hole
   ].join("\n"));
 });
 
-await test("buildScoreTable skips unplayed holes and appends unknown ones", () => {
+await test("buildScoreTable skips unplayed holes, appends unknown ones, and says Kast for a solo round", () => {
   const course = parseCourseFile("bana\n1 3\n2 3\n3 3", "bana");
   const table = buildScoreTable(course, [{ name: "A", score: { "1": 4, "10": 6 } }]);
 
   assert.equal(table, [
-    "Hål  Par  Snitt",
-    "---------------",
-    "1      3    4.0",
-    "10     -    6.0",
+    "Hål  Par  Kast",
+    "--------------",
+    "1      3   4.0",
+    "10     -   6.0",
   ].join("\n"));
 });

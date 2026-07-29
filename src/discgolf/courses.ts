@@ -222,7 +222,9 @@ export function buildScoreTable(course: Course | undefined, players: PlayerScore
   }
 
   const hasMissing = rows.some((row) => row.missing.length > 0);
-  const headers = ["Hål", ...course ? ["Par"] : [], "Snitt", ...hasMissing ? ["Saknad"] : []];
+  // A solo round's "average" is just that player's throws, so label it honestly
+  const scoreHeader = players.length === 1 ? "Kast" : "Snitt";
+  const headers = ["Hål", ...course ? ["Par"] : [], scoreHeader, ...hasMissing ? ["Saknad"] : []];
   const cells = rows.map((row) => [row.hole, ...course ? [row.par] : [], row.average, ...hasMissing ? [row.missing] : []]);
   const widths = headers.map((header, column) => Math.max(header.length, ...cells.map((row) => row[column]?.length ?? 0)));
   const leftAligned = new Set([0, ...hasMissing ? [headers.length - 1] : []]);
