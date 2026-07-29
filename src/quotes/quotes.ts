@@ -236,17 +236,14 @@ function extractContext(quote: TrimmedMessage): Quote | null {
   if (alias) {
     quotee = alias;
   }
-  if (Object.keys(aliases).some(alias => quotee.includes(alias))) {
-    for (const [alias, realName] of Object.entries(aliases)) {
-      quotee = quotee.replace(wordMatchRegex([alias]), realName);
-    }
-  }
+  // Longest alias first so "Viggos mor" wins over "Viggos"
+  const aliasRegex = wordMatchRegex(Object.keys(aliases).sort((a, b) => b.length - a.length));
+  const toRealName = (match: string) => aliases[match] as string;
+  quotee = quotee.replace(aliasRegex, toRealName);
   if (context) {
-    for (const [alias, realName] of Object.entries(aliases)) {
-      context = context.replace(wordMatchRegex([alias]), realName);
-    }
+    context = context.replace(aliasRegex, toRealName);
   }
-  body = body.replace(wordMatchRegex(Object.keys(aliases)), (match) => aliases[match] as string);
+  body = body.replace(aliasRegex, toRealName);
 
   // For our purposes we want to link quotees to user IDs where possible for easier use later
   const quoteeId = Object.entries(nameVariants).find(([, variants]) =>

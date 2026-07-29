@@ -63,6 +63,15 @@ await test("wordMatchRegex matches whole words only, with Unicode boundaries", (
   assert.equal("Viggos mor".replace(wordMatchRegex(["Viggo"]), "Vena"), "Viggos mor");
 });
 
+await test("wordMatchRegex tries names in the order given, so longest-first wins", () => {
+  const replacements: Record<string, string> = { "Viggos mor": "Venas mamma", "Viggos": "Venas" };
+  const regex = wordMatchRegex(["Viggos mor", "Viggos"]);
+  assert.equal(
+    "Viggos mor och Viggos hund".replace(regex, m => replacements[m] as string),
+    "Venas mamma och Venas hund",
+  );
+});
+
 await test("getTimestampFromDiscordLink returns null for invalid link", () => {
   assert.equal(getTimestampFromDiscordLink("https://discord.com/channels/1/2/not-a-snowflake"), null);
 });
