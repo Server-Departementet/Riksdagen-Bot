@@ -3,7 +3,7 @@ import path from "node:path";
 import type { ChatInputCommandInteraction, Message } from "discord.js";
 import { Client as DiscordClient, Events, GatewayIntentBits, MessageFlags, REST, Routes, SlashCommandBuilder } from "discord.js";
 import type { Course, HoleScore } from "./courses";
-import { buildScoreTable, findCourse, formatRelative, loadCourses, relativeToPar } from "./courses";
+import { buildScoreTable, findCourse, formatRelative, holeScoreValue, loadCourses, missingHoles, relativeToPar } from "./courses";
 
 const COURSE_NAME_MIN_LENGTH = 3;
 const COURSE_NAME_MAX_LENGTH = 30;
@@ -191,12 +191,12 @@ async function räkna(interaction: ChatInputCommandInteraction) {
   const guild = interaction.guild ?? await discordClient.guilds.fetch(DISCGOLF_GUILD_ID);
   await guild.members.fetch();
   const fancyDate = new Date(courseMessage.createdTimestamp).toLocaleString("sv-SE", { timeZone: "Europe/Stockholm", dateStyle: "long" });
-  const results: { memberId: string; points: number; score: Record<string, HoleScore> }[] = [];
+  const results: { memberId: string; name: string; points: number; score: Record<string, HoleScore> }[] = [];
   for (const member of guild.members.cache.values()) {
     if (member.user.bot) continue;
-    const { points, score } = getUserScore(member.id, allMessages.toJSON(), courseMessage);
+    const { points, score } = getUserScore(member.id, allMessages.toJSON(), courseMessage, course);
     if (Object.keys(score).length === 0) continue;
-    results.push({ memberId: member.id, points, score });
+    results.push({ memberId: member.id, name: member.displayName, points, score });
   }
 
   if (results.length === 0) {
@@ -208,8 +208,17 @@ async function räkna(interaction: ChatInputCommandInteraction) {
   const lines = results.map(({ memberId, points, score }) =>
     `<@${memberId}> - totalt ${points}${formatScoreSuffix(course, score)}`,
   );
-  const table = buildScoreTable(course, results.map((result) => result.score));
-  const out = `-# ${fancyDate}\n${courseMessage.content}\n${lines.join("\n")}\n\`\`\`\n${table}\n\`\`\``;
+  const players = results.map(({ name, score }) => ({ name, score }));
+  const table = buildScoreTable(course, players);
+  // Mentions inside a code block neither render nor ping, so the reminders go after the table
+  const missingLines = results
+    .map(({ memberId, score }) => {
+      const missing = missingHoles(course, players, score);
+      return missing.length > 0 ? `<@${memberId}> har missat att skriva hål ${missing.join(", ")}` : undefined;
+    })
+    .filter((line): line is string => line !== undefined);
+  const out = `-# ${fancyDate}\n${courseMessage.content}\n${lines.join("\n")}\n\`\`\`\n${table}\n\`\`\``
+    + (missingLines.length > 0 ? `\n${missingLines.join("\n")}` : "");
   if (!("send" in writeChannel)) {
     logError("Write channel is not text-based", undefined, { channelId: writeChannel.id, interactionId: interaction.id });
     await interaction.reply({ content: "Write channel is not text-based.", flags: MessageFlags.Ephemeral });
@@ -232,7 +241,7 @@ function isCourseMessage(content: string): boolean {
 // A non-numeric score ("5 dnf", "5 fyfan") marks the hole as not finished.
 const scoreLineRegex = /^([a-zA-ZåäöÅÄÖ]*\d+)\s+(\S.*)$/;
 
-function getUserScore(userId: string, messages: Message[], courseMessage: Message): {
+function getUserScore(userId: string, messages: Message[], courseMessage: Message, course: Course | undefined): {
   points: number;
   score: Record<string, HoleScore>;
 } {
@@ -265,7 +274,7 @@ function getUserScore(userId: string, messages: Message[], courseMessage: Messag
     }
   }
 
-  const points = Object.values(score).reduce((a: number, b) => typeof b === "number" ? a + b : a, 0);
+  const points = Object.entries(score).reduce((sum, [holeId, holeScore]) => sum + (holeScoreValue(course, holeId, holeScore) ?? 0), 0);
   logInfo("Finished calculating user score", { userId, totalPoints: points, entries: score });
   return { points, score };
 }

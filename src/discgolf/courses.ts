@@ -77,14 +77,25 @@ export function coursePar(course: Course): number {
   return course.holes.reduce((sum, hole) => sum + hole.par, 0);
 }
 
-/** Score relative to par, counting only the holes the player has recorded and finished. */
+// PDGA 811 scores an unplayed or abandoned hole as par plus four
+export const DNF_SCORE_OVER_PAR = 4;
+
+/** The strokes a recorded hole adds to the total: the throw count, or par + 4 for a DNF (undefined when the par is unknown). */
+export function holeScoreValue(course: Course | undefined, holeId: string, points: HoleScore): number | undefined {
+  if (typeof points === "number") return points;
+  const hole = course ? findHole(course, holeId) : undefined;
+  return hole ? hole.par + DNF_SCORE_OVER_PAR : undefined;
+}
+
+/** Score relative to par, counting only the holes the player has recorded. */
 export function relativeToPar(course: Course, score: Record<string, HoleScore>): number {
   let relative = 0;
   for (const [holeId, points] of Object.entries(score)) {
-    if (typeof points !== "number") continue;
     const hole = findHole(course, holeId);
     if (!hole) continue;
-    relative += points - hole.par;
+    const value = holeScoreValue(course, holeId, points);
+    if (value === undefined) continue;
+    relative += value - hole.par;
   }
   return relative;
 }
@@ -95,12 +106,17 @@ export function formatRelative(relative: number): string {
   return "±0";
 }
 
-/**
- * Builds the per-hole summary table. Holes follow the course file order with
- * any recorded holes missing from the course file appended at the end.
- * The Par column is omitted when the course is unknown.
- */
-export function buildScoreTable(course: Course | undefined, scores: Record<string, HoleScore>[]): string {
+export type PlayerScore = {
+  name: string;
+  score: Record<string, HoleScore>;
+};
+
+function recordedScore(score: Record<string, HoleScore>, holeId: string): HoleScore | undefined {
+  return Object.entries(score).find(([id]) => id.toLowerCase() === holeId.toLowerCase())?.[1];
+}
+
+/** Holes in course file order with any recorded holes missing from the course file appended at the end. */
+function orderedHoleIds(course: Course | undefined, scores: Record<string, HoleScore>[]): string[] {
   const holeIds = course ? course.holes.map((hole) => hole.id) : [];
   const knownIds = new Set(holeIds.map((id) => id.toLowerCase()));
   const extraIds = new Set<string>();
@@ -109,12 +125,33 @@ export function buildScoreTable(course: Course | undefined, scores: Record<strin
       if (!knownIds.has(holeId.toLowerCase())) extraIds.add(holeId);
     }
   }
-  holeIds.push(...[...extraIds].sort((a, b) => a.localeCompare(b, "sv-SE", { numeric: true })));
+  return [...holeIds, ...[...extraIds].sort((a, b) => a.localeCompare(b, "sv-SE", { numeric: true }))];
+}
 
-  const rows: { hole: string; par: string; average: string }[] = [];
-  for (const holeId of holeIds) {
+/**
+ * Hole ids the given player has no entry for, among the holes at least one
+ * player recorded. Holes nobody recorded count as skipped by the group, not
+ * missing. A DNF entry counts as recorded.
+ */
+export function missingHoles(course: Course | undefined, players: PlayerScore[], score: Record<string, HoleScore>): string[] {
+  return orderedHoleIds(course, players.map((player) => player.score)).filter((holeId) =>
+    recordedScore(score, holeId) === undefined
+    && players.some((player) => recordedScore(player.score, holeId) !== undefined),
+  );
+}
+
+/**
+ * Builds the per-hole summary table. Holes follow the course file order with
+ * any recorded holes missing from the course file appended at the end.
+ * The Par column is omitted when the course is unknown, and the Saknad column
+ * when nobody is missing a score on a played hole.
+ */
+export function buildScoreTable(course: Course | undefined, players: PlayerScore[]): string {
+  const scores = players.map((player) => player.score);
+  const rows: { hole: string; par: string; average: string; missing: string }[] = [];
+  for (const holeId of orderedHoleIds(course, scores)) {
     const recorded = scores
-      .map((score) => Object.entries(score).find(([id]) => id.toLowerCase() === holeId.toLowerCase())?.[1])
+      .map((score) => recordedScore(score, holeId))
       .filter((points): points is HoleScore => points !== undefined);
     if (recorded.length === 0) continue;
     const finished = recorded.filter((points): points is number => typeof points === "number");
@@ -122,14 +159,19 @@ export function buildScoreTable(course: Course | undefined, scores: Record<strin
       ? (finished.reduce((sum, points) => sum + points, 0) / finished.length).toFixed(1)
       : "-";
     const hole = course ? findHole(course, holeId) : undefined;
-    rows.push({ hole: holeId, par: hole ? String(hole.par) : "-", average });
+    const missing = players
+      .filter((player) => recordedScore(player.score, holeId) === undefined)
+      .map((player) => player.name);
+    rows.push({ hole: holeId, par: hole ? String(hole.par) : "-", average, missing: missing.join(", ") });
   }
 
-  const headers = course ? ["Hål", "Par", "Snitt"] : ["Hål", "Snitt"];
-  const cells = rows.map((row) => course ? [row.hole, row.par, row.average] : [row.hole, row.average]);
+  const hasMissing = rows.some((row) => row.missing.length > 0);
+  const headers = ["Hål", ...course ? ["Par"] : [], "Snitt", ...hasMissing ? ["Saknad"] : []];
+  const cells = rows.map((row) => [row.hole, ...course ? [row.par] : [], row.average, ...hasMissing ? [row.missing] : []]);
   const widths = headers.map((header, column) => Math.max(header.length, ...cells.map((row) => row[column]?.length ?? 0)));
+  const leftAligned = new Set([0, ...hasMissing ? [headers.length - 1] : []]);
   const renderRow = (row: string[]) => row
-    .map((cell, column) => column === 0 ? cell.padEnd(widths[column] ?? 0) : cell.padStart(widths[column] ?? 0))
+    .map((cell, column) => leftAligned.has(column) ? cell.padEnd(widths[column] ?? 0) : cell.padStart(widths[column] ?? 0))
     .join("  ")
     .trimEnd();
 

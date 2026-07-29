@@ -6,7 +6,9 @@ import {
   coursePar,
   findCourse,
   formatRelative,
+  holeScoreValue,
   loadCourses,
+  missingHoles,
   parseCourseFile,
   relativeToPar,
 } from "./courses";
@@ -86,15 +88,46 @@ await test("relativeToPar only counts recorded holes", () => {
   assert.equal(relativeToPar(course, { "1": 4, "okänt": 10 }), 1);
 });
 
-await test("relativeToPar ignores dnf holes", () => {
+await test("relativeToPar scores dnf holes as par plus four", () => {
   const course = parseCourseFile("bana\n1 3\n2 3\n3 3", "bana");
 
-  assert.equal(relativeToPar(course, { "1": 4, "2": "dnf" }), 1);
+  assert.equal(relativeToPar(course, { "1": 4, "2": "dnf" }), 1 + 4);
+});
+
+await test("holeScoreValue returns throws, or par plus four for dnf", () => {
+  const course = parseCourseFile("bana\n1 3", "bana");
+
+  assert.equal(holeScoreValue(course, "1", 5), 5);
+  assert.equal(holeScoreValue(course, "1", "dnf"), 3 + 4);
+  assert.equal(holeScoreValue(course, "okänt", "dnf"), undefined);
+  assert.equal(holeScoreValue(undefined, "1", "dnf"), undefined);
+});
+
+await test("missingHoles lists played holes a player skipped, not group-skipped holes", () => {
+  const course = parseCourseFile("bana\n1 3\n2 3\n3 3", "bana");
+  const a = { name: "A", score: { "1": 4 } };
+  const b = { name: "B", score: { "1": 6, "2": 5 } };
+
+  // Hole 3 was skipped by the whole group, so it counts for nobody
+  assert.deepEqual(missingHoles(course, [a, b], a.score), ["2"]);
+  assert.deepEqual(missingHoles(course, [a, b], b.score), []);
+});
+
+await test("missingHoles treats a dnf entry as recorded", () => {
+  const course = parseCourseFile("bana\n1 3\n2 3", "bana");
+  const a = { name: "A", score: { "1": 4, "2": "dnf" as const } };
+  const b = { name: "B", score: { "1": 6, "2": 5 } };
+
+  assert.deepEqual(missingHoles(course, [a, b], a.score), []);
 });
 
 await test("buildScoreTable renders pars and averages for the demo round", () => {
   const kristallen = parseCourseFile("kristallen\n1 3\n2 3\n3 3\n4 3\n5 4\n6 3\n7 3\n8 3\n9 4", "kristallen");
-  const table = buildScoreTable(kristallen, [liljemark, axel, winroth]);
+  const table = buildScoreTable(kristallen, [
+    { name: "Liljemark", score: liljemark },
+    { name: "Axel", score: axel },
+    { name: "Winroth", score: winroth },
+  ]);
 
   assert.equal(table, [
     "Hål  Par  Snitt",
@@ -112,7 +145,10 @@ await test("buildScoreTable renders pars and averages for the demo round", () =>
 });
 
 await test("buildScoreTable without a course matches the old format", () => {
-  const table = buildScoreTable(undefined, [{ "1": 5 }, { "1": 6, "2": 4 }]);
+  const table = buildScoreTable(undefined, [
+    { name: "A", score: { "1": 5, "2": 4 } },
+    { name: "B", score: { "1": 6, "2": 4 } },
+  ]);
 
   assert.equal(table, [
     "Hål  Snitt",
@@ -122,22 +158,40 @@ await test("buildScoreTable without a course matches the old format", () => {
   ].join("\n"));
 });
 
-await test("buildScoreTable averages only finished holes and marks dnf-only holes", () => {
+await test("buildScoreTable adds a Saknad column when a player misses a played hole", () => {
   const course = parseCourseFile("bana\n1 3\n2 3\n3 3", "bana");
-  const table = buildScoreTable(course, [{ "1": 4, "2": "dnf" }, { "1": 6, "2": 5, "3": "dnf" }]);
+  const table = buildScoreTable(course, [
+    { name: "A", score: { "1": 4, "2": 5 } },
+    { name: "B", score: { "1": 6 } },
+  ]);
 
   assert.equal(table, [
-    "Hål  Par  Snitt",
-    "---------------",
+    "Hål  Par  Snitt  Saknad",
+    "-----------------------",
+    "1      3    5.0",
+    "2      3    5.0  B",
+  ].join("\n"));
+});
+
+await test("buildScoreTable averages only finished holes and marks dnf-only holes", () => {
+  const course = parseCourseFile("bana\n1 3\n2 3\n3 3", "bana");
+  const table = buildScoreTable(course, [
+    { name: "A", score: { "1": 4, "2": "dnf" } },
+    { name: "B", score: { "1": 6, "2": 5, "3": "dnf" } },
+  ]);
+
+  assert.equal(table, [
+    "Hål  Par  Snitt  Saknad",
+    "-----------------------",
     "1      3    5.0",
     "2      3    5.0",
-    "3      3      -",
+    "3      3      -  A",
   ].join("\n"));
 });
 
 await test("buildScoreTable skips unplayed holes and appends unknown ones", () => {
   const course = parseCourseFile("bana\n1 3\n2 3\n3 3", "bana");
-  const table = buildScoreTable(course, [{ "1": 4, "10": 6 }]);
+  const table = buildScoreTable(course, [{ name: "A", score: { "1": 4, "10": 6 } }]);
 
   assert.equal(table, [
     "Hål  Par  Snitt",
