@@ -6,6 +6,9 @@ export type Hole = {
   par: number;
 };
 
+/** A recorded result for one hole: a stroke count, or "dnf" when the hole wasn't finished. */
+export type HoleScore = number | "dnf";
+
 export type Course = {
   name: string;
   aliases: string[];
@@ -74,10 +77,11 @@ export function coursePar(course: Course): number {
   return course.holes.reduce((sum, hole) => sum + hole.par, 0);
 }
 
-/** Score relative to par, counting only the holes the player has recorded. */
-export function relativeToPar(course: Course, score: Record<string, number>): number {
+/** Score relative to par, counting only the holes the player has recorded and finished. */
+export function relativeToPar(course: Course, score: Record<string, HoleScore>): number {
   let relative = 0;
   for (const [holeId, points] of Object.entries(score)) {
+    if (typeof points !== "number") continue;
     const hole = findHole(course, holeId);
     if (!hole) continue;
     relative += points - hole.par;
@@ -96,7 +100,7 @@ export function formatRelative(relative: number): string {
  * any recorded holes missing from the course file appended at the end.
  * The Par column is omitted when the course is unknown.
  */
-export function buildScoreTable(course: Course | undefined, scores: Record<string, number>[]): string {
+export function buildScoreTable(course: Course | undefined, scores: Record<string, HoleScore>[]): string {
   const holeIds = course ? course.holes.map((hole) => hole.id) : [];
   const knownIds = new Set(holeIds.map((id) => id.toLowerCase()));
   const extraIds = new Set<string>();
@@ -111,11 +115,14 @@ export function buildScoreTable(course: Course | undefined, scores: Record<strin
   for (const holeId of holeIds) {
     const recorded = scores
       .map((score) => Object.entries(score).find(([id]) => id.toLowerCase() === holeId.toLowerCase())?.[1])
-      .filter((points): points is number => points !== undefined);
+      .filter((points): points is HoleScore => points !== undefined);
     if (recorded.length === 0) continue;
-    const average = recorded.reduce((sum, points) => sum + points, 0) / recorded.length;
+    const finished = recorded.filter((points): points is number => typeof points === "number");
+    const average = finished.length > 0
+      ? (finished.reduce((sum, points) => sum + points, 0) / finished.length).toFixed(1)
+      : "-";
     const hole = course ? findHole(course, holeId) : undefined;
-    rows.push({ hole: holeId, par: hole ? String(hole.par) : "-", average: average.toFixed(1) });
+    rows.push({ hole: holeId, par: hole ? String(hole.par) : "-", average });
   }
 
   const headers = course ? ["Hål", "Par", "Snitt"] : ["Hål", "Snitt"];

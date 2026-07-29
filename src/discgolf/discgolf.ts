@@ -2,7 +2,7 @@ import "dotenv/config";
 import path from "node:path";
 import type { ChatInputCommandInteraction, Message } from "discord.js";
 import { Client as DiscordClient, Events, GatewayIntentBits, MessageFlags, REST, Routes, SlashCommandBuilder } from "discord.js";
-import type { Course } from "./courses";
+import type { Course, HoleScore } from "./courses";
 import { buildScoreTable, findCourse, formatRelative, loadCourses, relativeToPar } from "./courses";
 
 const COURSE_NAME_MIN_LENGTH = 3;
@@ -191,11 +191,11 @@ async function räkna(interaction: ChatInputCommandInteraction) {
   const guild = interaction.guild ?? await discordClient.guilds.fetch(DISCGOLF_GUILD_ID);
   await guild.members.fetch();
   const fancyDate = new Date(courseMessage.createdTimestamp).toLocaleString("sv-SE", { timeZone: "Europe/Stockholm", dateStyle: "long" });
-  const results: { memberId: string; points: number; score: Record<string, number> }[] = [];
+  const results: { memberId: string; points: number; score: Record<string, HoleScore> }[] = [];
   for (const member of guild.members.cache.values()) {
     if (member.user.bot) continue;
     const { points, score } = getUserScore(member.id, allMessages.toJSON(), courseMessage);
-    if (points === 0) continue;
+    if (Object.keys(score).length === 0) continue;
     results.push({ memberId: member.id, points, score });
   }
 
@@ -206,7 +206,7 @@ async function räkna(interaction: ChatInputCommandInteraction) {
 
   results.sort((a, b) => a.points - b.points);
   const lines = results.map(({ memberId, points, score }) =>
-    `<@${memberId}> - totalt ${points}${formatRelativeSuffix(course, score)}`,
+    `<@${memberId}> - totalt ${points}${formatScoreSuffix(course, score)}`,
   );
   const table = buildScoreTable(course, results.map((result) => result.score));
   const out = `-# ${fancyDate}\n${courseMessage.content}\n${lines.join("\n")}\n\`\`\`\n${table}\n\`\`\``;
@@ -228,14 +228,15 @@ function isCourseMessage(content: string): boolean {
   return isOnlyString && lengthOk;
 }
 
-// "<hole id> <score>" where the hole id is a number optionally prefixed by letters, e.g. "5 11" or "X1 3"
-const scoreLineRegex = /^([a-zA-ZåäöÅÄÖ]*\d+)\s+(\d+)$/;
+// "<hole id> <score>" where the hole id is a number optionally prefixed by letters, e.g. "5 11" or "X1 3".
+// A non-numeric score ("5 dnf", "5 fyfan") marks the hole as not finished.
+const scoreLineRegex = /^([a-zA-ZåäöÅÄÖ]*\d+)\s+(\S.*)$/;
 
 function getUserScore(userId: string, messages: Message[], courseMessage: Message): {
   points: number;
-  score: Record<string, number>;
+  score: Record<string, HoleScore>;
 } {
-  const score: Record<string, number> = {};
+  const score: Record<string, HoleScore> = {};
   logInfo("Calculating score for user", { userId, courseMessageId: courseMessage.id, course: courseMessage.content });
   for (const message of messages) {
     if (message.author.id !== userId) continue;
@@ -246,6 +247,12 @@ function getUserScore(userId: string, messages: Message[], courseMessage: Messag
       const match = scoreLineRegex.exec(line.trim());
       const [, hole, pointString] = match ?? [];
       if (!hole || !pointString) continue;
+
+      if (!/^\d+$/.test(pointString)) {
+        score[hole] = "dnf";
+        logInfo("Parsed DNF line", { messageId: message.id, hole, raw: pointString });
+        continue;
+      }
 
       const parsedPoint = parseInt(pointString, 10);
       if (parsedPoint > SINGLE_HOLE_MAX_SCORE) {
@@ -258,12 +265,15 @@ function getUserScore(userId: string, messages: Message[], courseMessage: Messag
     }
   }
 
-  const points = Object.values(score).reduce((a, b) => a + b, 0);
+  const points = Object.values(score).reduce((a: number, b) => typeof b === "number" ? a + b : a, 0);
   logInfo("Finished calculating user score", { userId, totalPoints: points, entries: score });
   return { points, score };
 }
 
-function formatRelativeSuffix(course: Course | undefined, score: Record<string, number>): string {
-  if (!course) return "";
-  return ` (${formatRelative(relativeToPar(course, score))})`;
+function formatScoreSuffix(course: Course | undefined, score: Record<string, HoleScore>): string {
+  const parts: string[] = [];
+  if (course) parts.push(formatRelative(relativeToPar(course, score)));
+  const dnfHoles = Object.entries(score).filter(([, points]) => points === "dnf").map(([hole]) => hole);
+  if (dnfHoles.length > 0) parts.push(`DNF: ${dnfHoles.join(", ")}`);
+  return parts.length > 0 ? ` (${parts.join(", ")})` : "";
 }

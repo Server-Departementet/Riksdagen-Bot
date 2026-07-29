@@ -86,6 +86,12 @@ await test("relativeToPar only counts recorded holes", () => {
   assert.equal(relativeToPar(course, { "1": 4, "okänt": 10 }), 1);
 });
 
+await test("relativeToPar ignores dnf holes", () => {
+  const course = parseCourseFile("bana\n1 3\n2 3\n3 3", "bana");
+
+  assert.equal(relativeToPar(course, { "1": 4, "2": "dnf" }), 1);
+});
+
 await test("buildScoreTable renders pars and averages for the demo round", () => {
   const kristallen = parseCourseFile("kristallen\n1 3\n2 3\n3 3\n4 3\n5 4\n6 3\n7 3\n8 3\n9 4", "kristallen");
   const table = buildScoreTable(kristallen, [liljemark, axel, winroth]);
@@ -113,6 +119,19 @@ await test("buildScoreTable without a course matches the old format", () => {
     "----------",
     "1      5.5",
     "2      4.0",
+  ].join("\n"));
+});
+
+await test("buildScoreTable averages only finished holes and marks dnf-only holes", () => {
+  const course = parseCourseFile("bana\n1 3\n2 3\n3 3", "bana");
+  const table = buildScoreTable(course, [{ "1": 4, "2": "dnf" }, { "1": 6, "2": 5, "3": "dnf" }]);
+
+  assert.equal(table, [
+    "Hål  Par  Snitt",
+    "---------------",
+    "1      3    5.0",
+    "2      3    5.0",
+    "3      3      -",
   ].join("\n"));
 });
 
