@@ -80,11 +80,14 @@ export function findCourse(courses: Course[], name: string): Course | undefined 
 const COURSE_NAME_MIN_LENGTH = 3;
 const COURSE_NAME_MAX_LENGTH = 30;
 
-/** A message that starts a new round: a known course, or a single word that looks like a course name. */
+/**
+ * A message that starts a new round: a known course, or words that look like a
+ * course name ("Gränby parken"). The score channel is strictly no-chat, so any
+ * letters-only message is trusted to be a course name.
+ */
 export function isCourseMessage(courses: Course[], content: string): boolean {
   if (findCourse(courses, content)) return true;
-  const isOnlyString = /^[a-zA-ZåäöÅÄÖ]+$/.test(content);
-  return isOnlyString
+  return /^[a-zA-ZåäöÅÄÖ][a-zA-ZåäöÅÄÖ ]*$/.test(content)
     && content.length >= COURSE_NAME_MIN_LENGTH
     && content.length <= COURSE_NAME_MAX_LENGTH;
 }

@@ -80,7 +80,9 @@ await test("isCourseMessage accepts known courses and course-like words", () => 
 
   assert.equal(isCourseMessage(courses, "DGB Rosendal"), true); // known multi-word alias
   assert.equal(isCourseMessage(courses, "Ultuna"), true); // unknown but course-like
-  assert.equal(isCourseMessage(courses, "vi kör kl 13"), false);
+  assert.equal(isCourseMessage(courses, "Gränby parken"), true); // unknown multi-word
+  assert.equal(isCourseMessage(courses, "Rosendal svart slinga"), true);
+  assert.equal(isCourseMessage(courses, "vi kör kl 13"), false); // contains digits
 });
 
 await test("courseTotal sums numbered holes only and requires all of them", () => {
