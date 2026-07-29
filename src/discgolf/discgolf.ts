@@ -336,7 +336,9 @@ async function formatera(interaction: ChatInputCommandInteraction) {
 async function fetchRecordMessage(): Promise<Message> {
   const recordChannel = await discordClient.channels.fetch(DISCGOLF_RECORD_CHANNEL_ID);
   if (!recordChannel?.isTextBased()) throw new Error("Record channel not found or is not text-based");
-  return await recordChannel.messages.fetch(DISCGOLF_RECORD_MESSAGE_ID);
+  // force skips the message cache - the bot gets no reaction gateway events, so a
+  // cached copy would keep the reaction (signature) state from when it was first fetched
+  return await recordChannel.messages.fetch({ message: DISCGOLF_RECORD_MESSAGE_ID, force: true });
 }
 
 async function renderRecordMessage(recordMessage: Message, records: CourseRecords): Promise<void> {
