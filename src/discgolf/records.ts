@@ -14,10 +14,10 @@ export type RecordEntry = {
 
 export type CourseRecords = { course: string; entries: RecordEntry[] }[];
 
-const RECORDS_TITLE = "# Banrekord";
+const RECORDS_TITLE = "## Banrekord";
 const RECORDS_SUBTEXT = "-# Uppdateras automatiskt vid /räkna";
-const courseLineRegex = /^## (.+)$/;
-const entryLineRegex = /^(\d+) <@(\d+)> (\d{4}-\d{2}-\d{2})$/;
+const courseLineRegex = /^### (.+)$/;
+const entryLineRegex = /^`(\d+)` <@(\d+)> (\d{4}-\d{2}-\d{2})$/;
 
 export function formatRecords(records: CourseRecords): string {
   const sections = [...records]
@@ -25,10 +25,10 @@ export function formatRecords(records: CourseRecords): string {
     .map(({ course, entries }) => {
       const lines = [...entries]
         .sort((a, b) => a.points - b.points || a.date.localeCompare(b.date))
-        .map((entry) => `${entry.points} <@${entry.userId}> ${entry.date}`);
-      return [`## ${course}`, ...lines].join("\n");
+        .map((entry) => `\`${entry.points}\` <@${entry.userId}> ${entry.date}`);
+      return [`### ${course}`, ...lines].join("\n");
     });
-  return [RECORDS_TITLE, RECORDS_SUBTEXT, "", sections.join("\n\n")].join("\n");
+  return [RECORDS_TITLE, RECORDS_SUBTEXT, "", sections.join("\n")].join("\n");
 }
 
 /** Parses a record message back into records. Unknown lines are ignored, so a fresh seed message parses as empty. */

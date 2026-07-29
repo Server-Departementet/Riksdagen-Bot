@@ -17,15 +17,14 @@ await test("formatRecords and parseRecords round-trip", () => {
 
   const content = formatRecords(records);
   assert.equal(content, [
-    "# Banrekord",
+    "## Banrekord",
     "-# Uppdateras automatiskt vid /räkna",
     "",
-    "## domarringen",
-    "36 <@3> 2026-07-27",
-    "",
-    "## rosendal",
-    "41 <@1> 2026-07-20",
-    "43 <@2> 2026-06-15",
+    "### domarringen",
+    "`36` <@3> 2026-07-27",
+    "### rosendal",
+    "`41` <@1> 2026-07-20",
+    "`43` <@2> 2026-06-15",
   ].join("\n"));
 
   assert.deepEqual(parseRecords(content), [
