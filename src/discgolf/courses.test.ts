@@ -8,7 +8,7 @@ import {
   findCourse,
   formatRelative,
   holeScoreValue,
-  isCourseMessage,
+  courseNameFrom,
   loadCourses,
   missingHoles,
   parseCourseFile,
@@ -75,14 +75,16 @@ await test("parseScoreLine parses scores and dnf, and rejects junk", () => {
   assert.equal(parseScoreLine("hejsan hoppsan"), undefined);
 });
 
-await test("isCourseMessage accepts known courses and course-like words", () => {
+await test("courseNameFrom finds the course name on the first line", () => {
   const courses = [parseCourseFile("rosendal, rosen, dgb rosendal\n1 3\n", "rosendal")];
 
-  assert.equal(isCourseMessage(courses, "DGB Rosendal"), true); // known multi-word alias
-  assert.equal(isCourseMessage(courses, "Ultuna"), true); // unknown but course-like
-  assert.equal(isCourseMessage(courses, "Gränby parken"), true); // unknown multi-word
-  assert.equal(isCourseMessage(courses, "Rosendal svart slinga"), true);
-  assert.equal(isCourseMessage(courses, "vi kör kl 13"), false); // contains digits
+  assert.equal(courseNameFrom(courses, "DGB Rosendal"), "DGB Rosendal"); // known multi-word alias
+  assert.equal(courseNameFrom(courses, "Ultuna"), "Ultuna"); // unknown but course-like
+  assert.equal(courseNameFrom(courses, "Gränby parken"), "Gränby parken"); // unknown multi-word
+  // Course name edited into the top of the first score message
+  assert.equal(courseNameFrom(courses, "Rosendal\n1 4\n2 3"), "Rosendal");
+  assert.equal(courseNameFrom(courses, "1 4\n2 3"), undefined);
+  assert.equal(courseNameFrom(courses, "vi kör kl 13"), undefined); // contains digits
 });
 
 await test("courseTotal sums numbered holes only and requires all of them", () => {

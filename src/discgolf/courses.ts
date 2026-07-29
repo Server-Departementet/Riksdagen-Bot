@@ -81,15 +81,19 @@ const COURSE_NAME_MIN_LENGTH = 3;
 const COURSE_NAME_MAX_LENGTH = 30;
 
 /**
- * A message that starts a new round: a known course, or words that look like a
- * course name ("Gränby parken"). The score channel is strictly no-chat, so any
- * letters-only message is trusted to be a course name.
+ * The course-name line if this message starts a round: its first line is a
+ * known course, or letters-only text that looks like a course name ("Gränby
+ * parken" — the score channel is strictly no-chat, so that's trusted). Score
+ * lines may follow on later lines ("Rosendal\n1 4"), so a forgotten course
+ * name can be fixed by editing it into the top of the first score message.
  */
-export function isCourseMessage(courses: Course[], content: string): boolean {
-  if (findCourse(courses, content)) return true;
-  return /^[a-zA-ZåäöÅÄÖ][a-zA-ZåäöÅÄÖ ]*$/.test(content)
-    && content.length >= COURSE_NAME_MIN_LENGTH
-    && content.length <= COURSE_NAME_MAX_LENGTH;
+export function courseNameFrom(courses: Course[], content: string): string | undefined {
+  const firstLine = content.split("\n")[0]?.trim() ?? "";
+  if (findCourse(courses, firstLine)) return firstLine;
+  const isCourseLike = /^[a-zA-ZåäöÅÄÖ][a-zA-ZåäöÅÄÖ ]*$/.test(firstLine)
+    && firstLine.length >= COURSE_NAME_MIN_LENGTH
+    && firstLine.length <= COURSE_NAME_MAX_LENGTH;
+  return isCourseLike ? firstLine : undefined;
 }
 
 export const SINGLE_HOLE_MAX_SCORE = 30; // Par on Domarringen is 27

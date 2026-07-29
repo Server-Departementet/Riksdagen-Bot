@@ -3,7 +3,7 @@ import path from "node:path";
 import type { ChatInputCommandInteraction, Message } from "discord.js";
 import { Client as DiscordClient, Events, GatewayIntentBits, MessageFlags, REST, Routes, SlashCommandBuilder } from "discord.js";
 import type { Course, HoleScore } from "./courses";
-import { buildScoreTable, courseTotal, findCourse, formatRelative, holeScoreValue, isCourseMessage, loadCourses, missingHoles, parseScoreLine, relativeToPar } from "./courses";
+import { buildScoreTable, courseNameFrom, courseTotal, findCourse, formatRelative, holeScoreValue, loadCourses, missingHoles, parseScoreLine, relativeToPar } from "./courses";
 import type { RecordEntry } from "./records";
 import { applyRoundResults, formatRecords, parseRecords } from "./records";
 
@@ -169,10 +169,11 @@ async function räkna(interaction: ChatInputCommandInteraction) {
   logInfo("Messages fetched", { count: allMessages.size, interactionId: interaction.id });
 
   const courseMessage = allMessages.filter(m =>
-    isCourseMessage(courses, m.content),
+    courseNameFrom(courses, m.content) !== undefined,
   ).first();
 
-  if (!courseMessage) {
+  const courseName = courseMessage ? courseNameFrom(courses, courseMessage.content) : undefined;
+  if (!courseMessage || !courseName) {
     logWarn("No course message found", { userId: sender.id, interactionId: interaction.id });
     await interaction.reply({ content: `Hittade ingen bana i dem senaste 100 meddelandena.`, flags: MessageFlags.Ephemeral });
     return;
@@ -180,14 +181,14 @@ async function räkna(interaction: ChatInputCommandInteraction) {
 
   logInfo("Course message found", {
     messageId: courseMessage.id,
-    content: courseMessage.content,
+    courseName,
     timestamp: courseMessage.createdTimestamp,
     interactionId: interaction.id,
   });
 
-  const course = findCourse(courses, courseMessage.content);
+  const course = findCourse(courses, courseName);
   if (!course) {
-    logWarn("No course file matches course message, pars will be unavailable", { course: courseMessage.content, interactionId: interaction.id });
+    logWarn("No course file matches course message, pars will be unavailable", { course: courseName, interactionId: interaction.id });
   }
 
   const guild = interaction.guild ?? await discordClient.guilds.fetch(DISCGOLF_GUILD_ID);
@@ -202,7 +203,7 @@ async function räkna(interaction: ChatInputCommandInteraction) {
   }
 
   if (results.length === 0) {
-    await interaction.reply({ content: `Inga resultat hittades att skicka för banan ${courseMessage.content}.`, flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: `Inga resultat hittades att skicka för banan ${courseName}.`, flags: MessageFlags.Ephemeral });
     return;
   }
 
@@ -231,7 +232,7 @@ async function räkna(interaction: ChatInputCommandInteraction) {
     }
   }
 
-  const out = `-# ${fancyDate}\n${courseMessage.content}\n${lines.join("\n")}\n\`\`\`\n${table}\n\`\`\``
+  const out = `-# ${fancyDate}\n${courseName}\n${lines.join("\n")}\n\`\`\`\n${table}\n\`\`\``
     + (missingLines.length > 0 ? `\n${missingLines.join("\n")}` : "")
     + recordLine;
   if (!("send" in writeChannel)) {
@@ -252,10 +253,15 @@ function getUserScore(userId: string, messages: Message[], courseMessage: Messag
   logInfo("Calculating score for user", { userId, courseMessageId: courseMessage.id, course: courseMessage.content });
   for (const message of messages) {
     if (message.author.id !== userId) continue;
-    if (message.createdTimestamp <= courseMessage.createdTimestamp) continue;
-    if (isCourseMessage(courses, message.content)) continue;
+    // The round-start message itself may carry the author's scores below the course name
+    const isRoundStart = message.id === courseMessage.id;
+    if (!isRoundStart) {
+      if (message.createdTimestamp <= courseMessage.createdTimestamp) continue;
+      if (courseNameFrom(courses, message.content) !== undefined) continue;
+    }
 
-    for (const line of message.content.split("\n")) {
+    const messageLines = message.content.split("\n");
+    for (const line of isRoundStart ? messageLines.slice(1) : messageLines) {
       const parsed = parseScoreLine(line);
       if (!parsed) continue;
       score[parsed.holeId] = parsed.points;
