@@ -249,8 +249,14 @@ async function räkna(interaction: ChatInputCommandInteraction) {
   // when newer messages (corrections, the next round) have arrived after it.
   const botId = discordClient.user?.id;
   const recentWriteMessages = await writeChannel.messages.fetch({ limit: 50 });
+  // Boards from before 2026-07-29 have no time in the header - match them too so they
+  // get upgraded in place instead of duplicated
+  const legacyDate = new Date(courseMessage.createdTimestamp).toLocaleString("sv-SE", { timeZone: "Europe/Stockholm", dateStyle: "long" });
+  const legacyHeader = `-# ${legacyDate}\n${courseName}\n`;
   const previousBoard = botId !== undefined
-    ? recentWriteMessages.find((m) => m.author.id === botId && m.content.startsWith(boardHeader))
+    ? recentWriteMessages.find((m) =>
+      m.author.id === botId
+      && (m.content.startsWith(boardHeader) || m.content.startsWith(legacyHeader)))
     : undefined;
 
   if (previousBoard) {
