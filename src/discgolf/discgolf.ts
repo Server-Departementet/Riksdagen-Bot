@@ -1,5 +1,4 @@
 import "dotenv/config";
-import fs from "node:fs";
 import path from "node:path";
 import type { ChatInputCommandInteraction, Message } from "discord.js";
 import { Client as DiscordClient, Events, GatewayIntentBits, MessageFlags, REST, Routes, SlashCommandBuilder } from "discord.js";
@@ -32,14 +31,6 @@ logInfo("Starting Discord Discgolf Bot");
 
 const courses = loadCourses(path.join(import.meta.dirname, "courses"));
 logInfo("Loaded courses", { count: courses.length, names: courses.map((course) => course.name) });
-
-// Signature emoji per Discord user id, shown next to record entries.
-// The file is gitignored, so it may be absent on a fresh checkout.
-const signaturesPath = path.join(import.meta.dirname, "..", "..", "signatures.json");
-const signatures: Record<string, string> = fs.existsSync(signaturesPath)
-  ? JSON.parse(fs.readFileSync(signaturesPath, "utf8")) as Record<string, string>
-  : {};
-logInfo("Loaded signatures", { count: Object.keys(signatures).length });
 
 if (!process.env.DISCORD_BOT_TOKEN) throw new Error("DISCORD_BOT_TOKEN is not set in environment variables");
 const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
@@ -324,9 +315,24 @@ async function updateCourseRecords(course: Course, courseMessage: Message, resul
   const { improved, newCourseBest } = applyRoundResults(records, course.name, eligible);
   // Edited on every /räkna, improved or not - "Senast uppdaterad" doubles as proof
   // that the latest count verified the records
+  const signatures = await signaturesFromReactions(recordMessage);
   await recordMessage.edit(formatRecords(records, signatures, new Date()));
-  logInfo("Updated record message", { course: course.name, eligibleCount: eligible.length, improved, newBest: newCourseBest?.points });
+  logInfo("Updated record message", { course: course.name, eligibleCount: eligible.length, improved, signatureCount: Object.keys(signatures).length, newBest: newCourseBest?.points });
   return newCourseBest;
+}
+
+/** Each player's signature emoji is their own reaction on the record message; their first reaction wins. */
+async function signaturesFromReactions(message: Message): Promise<Record<string, string>> {
+  const signatures: Record<string, string> = {};
+  for (const reaction of message.reactions.cache.values()) {
+    const emoji = reaction.emoji.toString();
+    const users = await reaction.users.fetch();
+    for (const user of users.values()) {
+      if (user.bot) continue;
+      signatures[user.id] ??= emoji;
+    }
+  }
+  return signatures;
 }
 
 function formatScoreSuffix(course: Course | undefined, score: Record<string, HoleScore>): string {
