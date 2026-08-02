@@ -2,6 +2,7 @@
  * Takeout-imported history records the same play with a timestamp a few seconds
  * off from the recently-played API's played_at, so the exact match on the
  * (trackId, playedAt, userId) primary key can't catch those duplicates.
+ * Kept in sync with Riksdagen/src/lib/play-dedupe.ts.
  */
 export const PLAY_DEDUPE_TOLERANCE_MS = 10_000;
 
