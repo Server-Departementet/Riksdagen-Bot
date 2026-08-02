@@ -1,6 +1,6 @@
 # Installed as the riks user's crontab (crontab -u riks systemd/cron).
 # The maintenance reboot lives in systemd/cron.root.
-*/15 *  * * *   /home/riks/Riksdagen-Backend/systemd/tsx.sh src/web/post-recent-plays.ts >> /var/log/riksdagen-backend/recent-plays.log 2>&1
-18 2    * * *   /home/riks/Riksdagen-Backend/systemd/tsx.sh src/quotes/quotes.ts --fetch >> /var/log/riksdagen-backend/quotes.log 2>&1
-0 18    * * *   /home/riks/Riksdagen-Backend/systemd/tsx.sh src/quiz/quiz.ts >> /var/log/riksdagen-backend/quiz.log 2>&1
-7 3     * * *   /home/riks/Riksdagen-Backend/systemd/tsx.sh src/make-users.ts >> /var/log/riksdagen-backend/make-users.log 2>&1
+*/15 *  * * *   /home/riks/Riksdagen-Backend/systemd/tsx-log.sh src/web/post-recent-plays.ts >> /var/log/riksdagen-backend/recent-plays.log 2>&1
+18 2    * * *   /home/riks/Riksdagen-Backend/systemd/tsx-log.sh src/quotes/quotes.ts --fetch >> /var/log/riksdagen-backend/quotes.log 2>&1
+0 18    * * *   /home/riks/Riksdagen-Backend/systemd/tsx-log.sh src/quiz/quiz.ts >> /var/log/riksdagen-backend/quiz.log 2>&1
+7 3     * * *   /home/riks/Riksdagen-Backend/systemd/tsx-log.sh src/make-users.ts >> /var/log/riksdagen-backend/make-users.log 2>&1
