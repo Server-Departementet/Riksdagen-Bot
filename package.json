@@ -13,6 +13,7 @@
     "lint": "tsc --noEmit -p ./tsconfig.json && eslint -c ./eslint.config.ts --cache --concurrency auto",
     "discgolf-test": "tsx --test src/discgolf/courses.test.ts src/discgolf/records.test.ts",
     "quotes-test": "tsx --test src/quotes/quote-utils.test.ts",
+    "web-test": "tsx --test src/web/play-dedupe.test.ts",
     "generate": "prisma generate && prisma generate --config prisma.web.config.ts",
     "make-users": "tsx src/make-users.ts",
     "post-recent-plays": "tsx src/web/post-recent-plays.ts"

@@ -4,6 +4,7 @@ import type { Prisma } from "@/lib/prisma-web/generated/client";
 import { PrismaClient } from "@/lib/prisma-web/generated/client";
 import { makeMariaDBAdapter } from "@/lib/prisma";
 import { refreshSpotifyAccessToken } from "./spotify-auth";
+import { filterNearDuplicatePlays, PLAY_DEDUPE_TOLERANCE_MS } from "./play-dedupe";
 import type SpotifyApi from "spotify-web-api-node";
 import type { UsersRecentlyPlayedTracksResponse } from "./types";
 
@@ -239,17 +240,35 @@ async function addRecentTrackPlays() {
 
         // Insert TrackPlays, skip dupes. Plays for tracks that could not be
         // created (no ISRC) are dropped — they would violate the FK
+        const candidatePlays = recentlyPlayedTracks.items
+          .filter((item) => existingTrackIds.has(item.track.id) || isrcByTrackId[item.track.id])
+          .map((item) => ({
+            playedAt: new Date(item.played_at),
+            userId: dbUser.id,
+            trackId: item.track.id,
+          })) satisfies Prisma.TrackPlayCreateManyInput[];
+
+        // Exact PK duplicates are handled by skipDuplicates below, but takeout-imported
+        // plays sit seconds off from the API's played_at — dedupe those with a tolerance
+        const playTimes = candidatePlays.map((play) => play.playedAt.getTime());
+        const storedPlays = candidatePlays.length === 0 ? [] : await prisma.trackPlay.findMany({
+          where: {
+            userId: dbUser.id,
+            trackId: { in: candidatePlays.map((play) => play.trackId) },
+            playedAt: {
+              gte: new Date(Math.min(...playTimes) - PLAY_DEDUPE_TOLERANCE_MS),
+              lte: new Date(Math.max(...playTimes) + PLAY_DEDUPE_TOLERANCE_MS),
+            },
+          },
+          select: { trackId: true, playedAt: true },
+        });
+        const newPlays = filterNearDuplicatePlays(candidatePlays, storedPlays);
+
         await prisma.trackPlay.createMany({
           skipDuplicates: true,
-          data: recentlyPlayedTracks.items
-            .filter((item) => existingTrackIds.has(item.track.id) || isrcByTrackId[item.track.id])
-            .map((item) => ({
-              playedAt: new Date(item.played_at),
-              userId: dbUser.id,
-              trackId: item.track.id,
-            })) satisfies Prisma.TrackPlayCreateManyInput[],
+          data: newPlays,
         });
-        console.info(`Inserted ${recentlyPlayedTracks.items.length} track plays (duplicates skipped).`);
+        console.info(`Inserted ${newPlays.length} track plays (${candidatePlays.length - newPlays.length} near-duplicates dropped).`);
       })
         .catch((err: unknown) => {
           console.error(`Error upserting data for user ${username}:`, err);
