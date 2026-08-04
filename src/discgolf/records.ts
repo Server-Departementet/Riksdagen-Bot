@@ -46,10 +46,12 @@ function flagFromText(text: string | undefined): RecordFlag | undefined {
   return undefined;
 }
 
-/** The index message: title, subtext, and the "senast uppdaterad" stamp. */
+const RECORDS_SIGNATURE_HINT = "-# Reagera på det här meddelandet — din reaktion blir din signatur-emoji i listorna";
+
+/** The index message: title, subtext, signature hint, and the "senast uppdaterad" stamp. */
 export function formatRecordsHeader(updatedAt: Date): string {
   const stamp = updatedAt.toLocaleString("sv-SE", { timeZone: "Europe/Stockholm", dateStyle: "short", timeStyle: "short" });
-  return [RECORDS_TITLE, RECORDS_SUBTEXT, `-# Senast uppdaterad ${stamp}`].join("\n");
+  return [RECORDS_TITLE, RECORDS_SUBTEXT, RECORDS_SIGNATURE_HINT, `-# Senast uppdaterad ${stamp}`].join("\n");
 }
 
 /** One course's pool message. */

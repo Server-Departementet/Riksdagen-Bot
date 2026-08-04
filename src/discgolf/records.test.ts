@@ -7,6 +7,7 @@ await test("formatRecordsHeader stamps the update time", () => {
   assert.equal(formatRecordsHeader(new Date("2026-07-29T12:34:00+02:00")), [
     "## Banrekord",
     "-# Uppdateras automatiskt vid /räkna",
+    "-# Reagera på det här meddelandet — din reaktion blir din signatur-emoji i listorna",
     "-# Senast uppdaterad 2026-07-29 12:34",
   ].join("\n"));
 });

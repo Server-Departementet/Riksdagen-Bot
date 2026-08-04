@@ -194,7 +194,7 @@ async function hjälp(interaction: ChatInputCommandInteraction) {
     "**/räkna:** räknar ihop senaste rundan och skickar resultatet. Rättat en felskriven poäng? Kör /räkna igen så uppdateras resultatet istället för att skickas om.",
     "**Saknade hål:** den som missat att skriva ett hål syns i kolumnen Saknad och blir pingad under tabellen. Hål som ingen skrivit räknas som överhoppade av gruppen.",
     "**Banrekord:** uppdateras automatiskt vid /räkna, en lista per bana. Bara hela rundor räknas (alla numrerade hål — X-hål är frivilliga extrahål). Nya rekord flaggas med [PR 🎉] eller [Banrekord!! 🥳] tills nästa poängändring, datumet länkar till rundans resultat, och banan flyttas längst ner så att de minst spelade banorna klättrar uppåt.",
-    "**Signatur:** din reaktion på banrekord-meddelandet blir din emoji på rekordlistan.",
+    "**Signatur:** reagera på det översta banrekord-meddelandet (det med rubriken) — din reaktion blir din emoji i rekordlistorna. Byt emoji genom att byta reaktion.",
     "**/formatera:** ritar om banrekord-meddelandet utan att räkna något (plockar t.ex. upp nya signaturer).",
   ].join("\n");
   await interaction.reply({ content, flags: MessageFlags.Ephemeral });
@@ -215,7 +215,38 @@ async function ping(interaction: ChatInputCommandInteraction) {
 await discordClient.login(DISCORD_BOT_TOKEN);
 logInfo("Bot logged in and listening for interactions");
 
+const RÄKNA_COOLDOWN_MS = 10_000;
+let räknaInFlight = false;
+let lastRäknaFinishedAt = 0;
+
+/**
+ * Concurrent or rapid-fire /räkna calls must not produce duplicate boards -
+ * the rerun dedup only helps once the first board exists, so the actual count
+ * runs behind an in-flight lock and a short cooldown.
+ */
 async function räkna(interaction: ChatInputCommandInteraction) {
+  if (räknaInFlight) {
+    logInfo("räkna ignored, count already in flight", { userId: interaction.user.id, interactionId: interaction.id });
+    await interaction.reply({ content: "En räkning pågår redan.", flags: MessageFlags.Ephemeral });
+    return;
+  }
+  const waitMs = RÄKNA_COOLDOWN_MS - (Date.now() - lastRäknaFinishedAt);
+  if (waitMs > 0) {
+    logInfo("räkna ignored, cooling down", { waitMs, userId: interaction.user.id, interactionId: interaction.id });
+    await interaction.reply({ content: `Senaste räkningen var alldeles nyss. Vänta ${Math.ceil(waitMs / 1000)} s och försök igen vid behov.`, flags: MessageFlags.Ephemeral });
+    return;
+  }
+  räknaInFlight = true;
+  try {
+    await runRäkna(interaction);
+  }
+  finally {
+    räknaInFlight = false;
+    lastRäknaFinishedAt = Date.now();
+  }
+}
+
+async function runRäkna(interaction: ChatInputCommandInteraction) {
   const sender = interaction.member?.user;
   logInfo("räkna command started", { userId: sender?.id, username: sender?.username, interactionId: interaction.id });
 

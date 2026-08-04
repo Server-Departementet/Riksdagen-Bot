@@ -10,7 +10,8 @@
   - course name as first line of the first score message, `hål poäng` lines, dnf notation (par + 4),
     Saknad pings, records/flags, and that partial rounds never count toward banrekord
     (answers Winroth's request from the feature channel — it already works this way)
-- [ ] cooldown/debounce on /räkna so multiple calls don't trigger multiple messages from the bot
+- [x] cooldown/debounce on /räkna so multiple calls don't trigger multiple messages from the bot
+  - in-flight lock (blocks the concurrent race) + 10 s cooldown with an ephemeral "vänta X s" reply
 
 ## 2. Looser parsing (behavior change — safest once the ack from step 1 is live)
 
