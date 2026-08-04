@@ -1,1 +1,8 @@
 - [x] set up web server for relaying image attachments
+- [ ] looser course message requirements basically if it is \d+\s+.+ it's a score message, else it's a course
+- [ ] split courses into separate messages
+  - [ ] include message to the /räkna message
+- [ ] co-op support
+  - [ ] shown on leaderboard
+  - [ ] have a syntax for coop course messages. Like <course> coop|co-op [<@user> <@user> ...] vs [<@user> <@user> ...]
+  - [ ] separate scoring from regular games
