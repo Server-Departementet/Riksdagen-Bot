@@ -1,7 +1,7 @@
 import "dotenv/config";
 import path from "node:path";
 import type { ChatInputCommandInteraction, Message } from "discord.js";
-import { Client as DiscordClient, Events, GatewayIntentBits, MessageFlags, REST, Routes, SlashCommandBuilder } from "discord.js";
+import { Client as DiscordClient, Events, GatewayIntentBits, MessageFlags, Partials, REST, Routes, SlashCommandBuilder } from "discord.js";
 import type { Course, HoleScore } from "./courses";
 import { buildScoreTable, courseNameFrom, courseTotal, findCourse, formatRelative, holeScoreValue, loadCourses, missingHoles, parseScoreLine, relativeToPar } from "./courses";
 import type { CourseRecords, RecordEntry } from "./records";
@@ -54,6 +54,9 @@ const discordClient = new DiscordClient({
     GatewayIntentBits.MessageContent,
     GatewayIntentBits.GuildMessages,
   ],
+  // Without the Message partial, edits to uncached messages (e.g. a course name
+  // edited into an old score message after a restart) emit no MessageUpdate event
+  partials: [Partials.Message],
 });
 
 const commands = [
@@ -63,6 +66,9 @@ const commands = [
   new SlashCommandBuilder()
     .setName("formatera")
     .setDescription("Formaterar om banrekord-meddelandet"),
+  new SlashCommandBuilder()
+    .setName("hjälp")
+    .setDescription("Förklarar poängsyntax och botens funktioner"),
   new SlashCommandBuilder()
     .setName("ping")
     .setDescription("Svarar med pong och latens"),
@@ -124,6 +130,9 @@ async function dispatchCommands(interaction: ChatInputCommandInteraction) {
     case "formatera":
       await formatera(interaction);
       return;
+    case "hjälp":
+      await hjälp(interaction);
+      return;
     case "ping":
       await ping(interaction);
       return;
@@ -131,6 +140,65 @@ async function dispatchCommands(interaction: ChatInputCommandInteraction) {
       logWarn("Unknown command", { commandName: interaction.commandName });
       await interaction.reply({ content: "Unknown command.", flags: MessageFlags.Ephemeral });
   }
+}
+
+const COURSE_ACK_KNOWN = "✅";
+const COURSE_ACK_UNKNOWN = "❓";
+
+/**
+ * Acknowledges a course message with ✅ (in the catalog, pars available) or
+ * ❓ (course-like but unknown). Runs on new and edited messages, so fixing a
+ * typo or editing a course name into a score message updates the reaction.
+ */
+async function ackCourseMessage(message: Message) {
+  if (message.author.bot) return;
+  if (message.channelId !== DISCGOLF_READ_CHANNEL_ID) return;
+
+  const courseName = courseNameFrom(courses, message.content);
+  const desired = courseName === undefined
+    ? undefined
+    : findCourse(courses, courseName) ? COURSE_ACK_KNOWN : COURSE_ACK_UNKNOWN;
+
+  for (const emoji of [COURSE_ACK_KNOWN, COURSE_ACK_UNKNOWN]) {
+    const existing = message.reactions.cache.find((reaction) => reaction.emoji.name === emoji && reaction.me);
+    if (emoji !== desired && existing) await existing.users.remove();
+    if (emoji === desired && !existing) await message.react(emoji);
+  }
+  if (desired) {
+    logInfo("Acknowledged course message", { messageId: message.id, courseName, known: desired === COURSE_ACK_KNOWN });
+  }
+}
+
+discordClient.on(Events.MessageCreate, (message) => {
+  ackCourseMessage(message).catch((err: unknown) => {
+    logError("Error acknowledging course message", err, { messageId: message.id });
+  });
+});
+
+discordClient.on(Events.MessageUpdate, (_oldMessage, newMessage) => {
+  void (async () => {
+    const message = newMessage.partial ? await newMessage.fetch() : newMessage;
+    await ackCourseMessage(message);
+  })().catch((err: unknown) => {
+    logError("Error acknowledging edited message", err, { messageId: newMessage.id });
+  });
+});
+
+async function hjälp(interaction: ChatInputCommandInteraction) {
+  logInfo("hjälp command started", { userId: interaction.user.id, interactionId: interaction.id });
+  const content = [
+    "## Så funkar poängräkningen",
+    "**Starta en runda:** skicka banans namn som ett eget meddelande — eller som första raden i ditt första poängmeddelande om du glömde. Allt som inte ser ut som en poängrad tolkas som ett bannamn. Botten reagerar ✅ när banan finns i katalogen och ❓ när den är okänd (då finns inga par).",
+    "**Logga poäng:** en rad per hål: `<hål> <kast>`, t.ex. `4 5` eller `X1 3`.",
+    "**DNF:** skriv något som inte är en siffra som poäng, t.ex. `5 dnf` — hålet räknas som par + 4 (PDGA 811).",
+    "**/räkna:** räknar ihop senaste rundan och skickar resultatet. Rättat en felskriven poäng? Kör /räkna igen så uppdateras resultatet istället för att skickas om.",
+    "**Saknade hål:** den som missat att skriva ett hål syns i kolumnen Saknad och blir pingad under tabellen. Hål som ingen skrivit räknas som överhoppade av gruppen.",
+    "**Banrekord:** uppdateras automatiskt vid /räkna. Bara hela rundor räknas (alla numrerade hål — X-hål är frivilliga extrahål). Nya rekord flaggas med [PR 🎉] eller [Banrekord!! 🥳] tills nästa poängändring, och banan flyttas längst ner så att de minst spelade banorna klättrar uppåt.",
+    "**Signatur:** din reaktion på banrekord-meddelandet blir din emoji på rekordlistan.",
+    "**/formatera:** ritar om banrekord-meddelandet utan att räkna något (plockar t.ex. upp nya signaturer).",
+  ].join("\n");
+  await interaction.reply({ content, flags: MessageFlags.Ephemeral });
+  logInfo("hjälp command finished", { interactionId: interaction.id });
 }
 
 async function ping(interaction: ChatInputCommandInteraction) {

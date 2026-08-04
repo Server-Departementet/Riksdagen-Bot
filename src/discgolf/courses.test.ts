@@ -75,16 +75,18 @@ await test("parseScoreLine parses scores and dnf, and rejects junk", () => {
   assert.equal(parseScoreLine("hejsan hoppsan"), undefined);
 });
 
-await test("courseNameFrom finds the course name on the first line", () => {
+await test("courseNameFrom treats any non-score first line as a course name", () => {
   const courses = [parseCourseFile("rosendal, rosen, dgb rosendal\n1 3\n", "rosendal")];
 
   assert.equal(courseNameFrom(courses, "DGB Rosendal"), "DGB Rosendal"); // known multi-word alias
   assert.equal(courseNameFrom(courses, "Ultuna"), "Ultuna"); // unknown but course-like
-  assert.equal(courseNameFrom(courses, "Gränby parken"), "Gränby parken"); // unknown multi-word
+  assert.equal(courseNameFrom(courses, "Gränby parken 2"), "Gränby parken 2"); // digits allowed now
   // Course name edited into the top of the first score message
   assert.equal(courseNameFrom(courses, "Rosendal\n1 4\n2 3"), "Rosendal");
+  // Score-shaped first lines are never course names, valid score or not
   assert.equal(courseNameFrom(courses, "1 4\n2 3"), undefined);
-  assert.equal(courseNameFrom(courses, "vi kör kl 13"), undefined); // contains digits
+  assert.equal(courseNameFrom(courses, "X1 3"), undefined);
+  assert.equal(courseNameFrom(courses, "5 45"), undefined); // typo, but still a score line
 });
 
 await test("courseTotal sums numbered holes only and requires all of them", () => {

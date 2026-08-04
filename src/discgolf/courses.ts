@@ -81,19 +81,20 @@ const COURSE_NAME_MIN_LENGTH = 3;
 const COURSE_NAME_MAX_LENGTH = 30;
 
 /**
- * The course-name line if this message starts a round: its first line is a
- * known course, or letters-only text that looks like a course name ("Gränby
- * parken" — the score channel is strictly no-chat, so that's trusted). Score
+ * The course-name line if this message starts a round: any first line that
+ * isn't shaped like a score line. The score channel is strictly no-chat, so
+ * everything else within a sane length is trusted to be a course name. Score
  * lines may follow on later lines ("Rosendal\n1 4"), so a forgotten course
  * name can be fixed by editing it into the top of the first score message.
  */
 export function courseNameFrom(courses: Course[], content: string): string | undefined {
   const firstLine = content.split("\n")[0]?.trim() ?? "";
   if (findCourse(courses, firstLine)) return firstLine;
-  const isCourseLike = /^[a-zA-ZåäöÅÄÖ][a-zA-ZåäöÅÄÖ ]*$/.test(firstLine)
-    && firstLine.length >= COURSE_NAME_MIN_LENGTH
-    && firstLine.length <= COURSE_NAME_MAX_LENGTH;
-  return isCourseLike ? firstLine : undefined;
+  // Shape only, not validity: a typo like "5 45" must stay a score line
+  if (scoreLineRegex.test(firstLine)) return undefined;
+  return firstLine.length >= COURSE_NAME_MIN_LENGTH && firstLine.length <= COURSE_NAME_MAX_LENGTH
+    ? firstLine
+    : undefined;
 }
 
 export const SINGLE_HOLE_MAX_SCORE = 30; // Par on Domarringen is 27

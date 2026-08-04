@@ -4,19 +4,20 @@
 
 ## 1. Quick wins (no structural changes)
 
-- [ ] bot reacts to course message with :white_check_mark: or :question: depending on if it's in the course catalog
-  - needs a MessageCreate listener on the score channel — the bot is interaction-only today
-  - ❓ doubles as the prompt to add a course file / fix a typo before anyone logs scores
-- [ ] /hjälp command, documenting all syntax and features
+- [x] bot reacts to course message with :white_check_mark: or :question: depending on if it's in the course catalog
+  - reacts on both new and edited messages, and swaps the reaction if an edit changes the verdict
+- [x] /hjälp command, documenting all syntax and features
   - course name as first line of the first score message, `hål poäng` lines, dnf notation (par + 4),
     Saknad pings, records/flags, and that partial rounds never count toward banrekord
     (answers Winroth's request from the feature channel — it already works this way)
+- [ ] cooldown/debounce on /räkna so multiple calls don't trigger multiple messages from the bot
 
 ## 2. Looser parsing (behavior change — safest once the ack from step 1 is live)
 
-- [ ] looser course message requirements: basically if it is `\d+\s+.+` it's a score message, else it's a course
-  - the ✅/❓ reaction is the safety net for misdetections, so ship after step 1
-  - update /hjälp
+- [x] looser course message requirements: basically if it is `\d+\s+.+` it's a score message, else it's a course
+  - implemented as: score-line *shaped* first line (valid or not, so a typo like `5 45` can't split a round) → score message, anything else within 3-30 chars → course name
+  - the ✅/❓ reaction is the safety net for misdetections
+  - /hjälp updated
 
 ## 3. Record board restructure
 
