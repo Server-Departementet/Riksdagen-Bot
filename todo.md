@@ -35,7 +35,7 @@
 ## 4. Co-op support (depends on 2 for course-line syntax and 3 for board layout)
 
 - [ ] co-op support
-  - [ ] have a syntax for coop course messages. Like `<course> coop|co-op [<@user> <@user> ...] vs [<@user> <@user> ...]`
+  - [ ] have a syntax for coop course messages. Like `<course> coop|co-op   [<@user> <@user> ...] vs [<@user> <@user> ...]`
   - [ ] separate scoring from regular games (own records, doesn't touch personal ones)
   - [ ] shown on leaderboard
   - update /hjälp
