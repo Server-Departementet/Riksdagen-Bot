@@ -65,7 +65,7 @@ const commands = [
     .setDescription("Räknar poäng från senaste banan"),
   new SlashCommandBuilder()
     .setName("formatera")
-    .setDescription("Formaterar om banrekord-meddelandet"),
+    .setDescription("Formaterar om rekord-meddelandena"),
   new SlashCommandBuilder()
     .setName("hjälp")
     .setDescription("Förklarar poängsyntax och botens funktioner"),
@@ -196,9 +196,9 @@ async function hjälp(interaction: ChatInputCommandInteraction) {
     "**DNF:** skriv något som inte är en siffra som poäng, t.ex. `5 dnf` — hålet räknas som par + 4 (PDGA 811).",
     "**/räkna:** räknar ihop senaste rundan och skickar resultatet. Rättat en felskriven poäng? Kör /räkna igen så uppdateras resultatet istället för att skickas om.",
     "**Saknade hål:** den som missat att skriva ett hål syns i kolumnen Saknad och blir pingad under tabellen. Hål som ingen skrivit räknas som överhoppade av gruppen.",
-    "**Banrekord:** uppdateras automatiskt vid /räkna, en lista per bana. Bara hela rundor räknas (alla numrerade hål — X-hål är frivilliga extrahål). Nya rekord flaggas med [PR 🎉] eller [Banrekord!! 🥳] tills nästa poängändring, datumet länkar till rundans resultat, och banan flyttas längst ner så att de minst spelade banorna klättrar uppåt.",
-    "**Signatur:** reagera på det översta banrekord-meddelandet (det med rubriken) — din reaktion blir din emoji i rekordlistorna. Byt emoji genom att byta reaktion.",
-    "**/formatera:** ritar om banrekord-meddelandet utan att räkna något (plockar t.ex. upp nya signaturer).",
+    "**Rekord:** uppdateras automatiskt vid /räkna, en lista per bana. Bara hela rundor räknas (alla numrerade hål — X-hål är frivilliga extrahål). Nya rekord flaggas med [PR 🎉] eller [Rekord!! 🥳] tills nästa poängändring, datumet länkar till rundans resultat, och banan flyttas längst ner så att de minst spelade banorna klättrar uppåt.",
+    "**Signatur:** reagera på det översta rekord-meddelandet (det med rubriken) — din reaktion blir din emoji i rekordlistorna. Byt emoji genom att byta reaktion.",
+    "**/formatera:** ritar om rekord-meddelandena utan att räkna något (plockar t.ex. upp nya signaturer).",
   ].join("\n");
   await interaction.reply({ content, flags: MessageFlags.Ephemeral });
   logInfo("hjälp command finished", { interactionId: interaction.id });
@@ -371,7 +371,7 @@ async function runRäkna(interaction: ChatInputCommandInteraction) {
     try {
       const newCourseBest = await updateCourseRecords(course, courseMessage, results, boardMessage.url);
       if (newCourseBest) {
-        await boardMessage.edit(out + `\n🏆 Nytt banrekord: ${newCourseBest.points} av <@${newCourseBest.userId}>!`);
+        await boardMessage.edit(out + `\n🏆 Nytt rekord: ${newCourseBest.points} av <@${newCourseBest.userId}>!`);
       }
     }
     catch (err) {
@@ -488,7 +488,7 @@ async function formatera(interaction: ChatInputCommandInteraction) {
   }
   await pool.indexMessage.edit(formatRecordsHeader(new Date()));
   logInfo("formatera command finished", { courseCount: pool.courseMessages.length, interactionId: interaction.id });
-  await interaction.reply({ content: `Formaterade om banrekord (${pool.courseMessages.length} banor).`, flags: MessageFlags.Ephemeral });
+  await interaction.reply({ content: `Formaterade om rekorden (${pool.courseMessages.length} banor).`, flags: MessageFlags.Ephemeral });
 }
 
 /** Each player's signature emoji is their own reaction on the record message; their first reaction wins. */

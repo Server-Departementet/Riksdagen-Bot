@@ -10,7 +10,7 @@
  */
 
 /** Celebration marker set when a score actually changes: personal record or new course record. */
-export type RecordFlag = "pr" | "banrekord";
+export type RecordFlag = "pr" | "rekord";
 
 export type RecordEntry = {
   userId: string;
@@ -28,7 +28,7 @@ export type RecordEntry = {
 
 export type CourseRecords = { course: string; entries: RecordEntry[] }[];
 
-const RECORDS_TITLE = "## Banrekord";
+const RECORDS_TITLE = "## Rekord";
 const RECORDS_SUBTEXT = "-# Uppdateras automatiskt vid /räkna";
 const courseLineRegex = /^### (.+)$/;
 // The optional token between score and mention is the player's signature emoji;
@@ -37,12 +37,12 @@ const entryLineRegex = /^`(\d+)` (?:\S+ )?<@(\d+)> (?:\[(\d{4}-\d{2}-\d{2})\]\((
 
 const FLAG_TEXT: Record<RecordFlag, string> = {
   pr: "[PR 🎉]",
-  banrekord: "[Banrekord!! 🥳]",
+  rekord: "[Rekord!! 🥳]",
 };
 
 function flagFromText(text: string | undefined): RecordFlag | undefined {
   if (text === FLAG_TEXT.pr) return "pr";
-  if (text === FLAG_TEXT.banrekord) return "banrekord";
+  if (text === FLAG_TEXT.rekord) return "rekord";
   return undefined;
 }
 
@@ -148,7 +148,7 @@ export function applyRoundResults(records: CourseRecords, courseName: string, re
   const best = [...section.entries].sort((a, b) => a.points - b.points || a.date.localeCompare(b.date))[0];
   if (best && (previousBest === undefined || best.points < previousBest)) {
     // A new course best is always one of this round's improvements
-    best.flag = "banrekord";
+    best.flag = "rekord";
     return { improved: improvedEntries.length > 0, newCourseBest: best };
   }
   return { improved: improvedEntries.length > 0 };

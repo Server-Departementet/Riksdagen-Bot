@@ -5,7 +5,7 @@ import { applyRoundResults, formatCourseSection, formatRecordsHeader, parseRecor
 
 await test("formatRecordsHeader stamps the update time", () => {
   assert.equal(formatRecordsHeader(new Date("2026-07-29T12:34:00+02:00")), [
-    "## Banrekord",
+    "## Rekord",
     "-# Uppdateras automatiskt vid /räkna",
     "-# Reagera på det här meddelandet — din reaktion blir din signatur-emoji i listorna",
     "-# Senast uppdaterad 2026-07-29 12:34",
@@ -66,13 +66,13 @@ await test("record flags render, round-trip, and survive reformatting", () => {
   const records: CourseRecords = [{
     course: "Rosendal",
     entries: [
-      { userId: "1", points: 41, date: "2026-07-20", flag: "banrekord" },
+      { userId: "1", points: 41, date: "2026-07-20", flag: "rekord" },
       { userId: "2", points: 43, date: "2026-06-15", flag: "pr" },
     ],
   }];
 
   const content = formatCourseSection(records[0] as CourseRecords[number], {});
-  assert.ok(content.includes("`41` <@1> 2026-07-20 [Banrekord!! 🥳]"));
+  assert.ok(content.includes("`41` <@1> 2026-07-20 [Rekord!! 🥳]"));
   assert.ok(content.includes("`43` <@2> 2026-06-15 [PR 🎉]"));
   // parse → format (what /formatera does) must not lose or move flags
   assert.deepEqual(parseRecords(content), records);
@@ -81,12 +81,12 @@ await test("record flags render, round-trip, and survive reformatting", () => {
 await test("a count without score changes leaves existing flags untouched", () => {
   const records: CourseRecords = [{
     course: "Rosendal",
-    entries: [{ userId: "1", points: 41, date: "2026-07-20", flag: "banrekord" }],
+    entries: [{ userId: "1", points: 41, date: "2026-07-20", flag: "rekord" }],
   }];
 
   const result = applyRoundResults(records, "Rosendal", [{ userId: "1", points: 41, date: "2026-07-29" }]);
   assert.equal(result.improved, false);
-  assert.equal(records[0]?.entries[0]?.flag, "banrekord");
+  assert.equal(records[0]?.entries[0]?.flag, "rekord");
 });
 
 await test("a new score sinks the course to the bottom of the board", () => {
@@ -106,7 +106,7 @@ await test("a new score sinks the course to the bottom of the board", () => {
 
 await test("a score change moves the flags: old ones clear, improvements get PR", () => {
   const records: CourseRecords = [
-    { course: "Rosendal", entries: [{ userId: "1", points: 41, date: "2026-07-20", flag: "banrekord" }] },
+    { course: "Rosendal", entries: [{ userId: "1", points: 41, date: "2026-07-20", flag: "rekord" }] },
     { course: "Röbo", entries: [{ userId: "2", points: 45, date: "2026-07-27", flag: "pr" }] },
   ];
 
@@ -146,7 +146,7 @@ await test("applyRoundResults keeps personal bests and reports a new course best
     { userId: "2", points: 43, date: "2026-06-14" },
   ]);
   assert.equal(first.improved, true);
-  assert.deepEqual(first.newCourseBest, { userId: "2", points: 43, date: "2026-06-14", flag: "banrekord" });
+  assert.deepEqual(first.newCourseBest, { userId: "2", points: 43, date: "2026-06-14", flag: "rekord" });
 
   // Worse or equal results change nothing
   const worse = applyRoundResults(records, "rosendal", [{ userId: "1", points: 45, date: "2026-07-01" }]);
@@ -160,12 +160,12 @@ await test("applyRoundResults keeps personal bests and reports a new course best
 
   // Beating the course record is reported; the section adopts the caller's casing
   const best = applyRoundResults(records, "Rosendal", [{ userId: "1", points: 41, date: "2026-07-20" }]);
-  assert.deepEqual(best.newCourseBest, { userId: "1", points: 41, date: "2026-07-20", flag: "banrekord" });
+  assert.deepEqual(best.newCourseBest, { userId: "1", points: 41, date: "2026-07-20", flag: "rekord" });
 
   assert.deepEqual(records, [{
     course: "Rosendal",
     entries: [
-      { userId: "1", points: 41, date: "2026-07-20", flag: "banrekord" },
+      { userId: "1", points: 41, date: "2026-07-20", flag: "rekord" },
       { userId: "2", points: 43, date: "2026-06-14" },
     ],
   }]);
