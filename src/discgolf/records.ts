@@ -1,8 +1,12 @@
 /**
- * Course records live in a single bot-owned Discord message that is both the
- * display and the storage (no data on our own server, per the channel
- * consensus 2026-07-27). Each course section lists every player's personal
- * best, lowest first, so the top line is the course record.
+ * Course records live in a pool of bot-owned Discord messages that are both
+ * the display and the storage (no data on our own server, per the channel
+ * consensus 2026-07-27): an index message carrying the title, the "senast
+ * uppdaterad" stamp and the signature reactions, plus one message per course
+ * listing every player's personal best, lowest first, so the top line is the
+ * course record. When a score changes, that course's message is deleted and
+ * resent (with mention pings suppressed), sinking it to the bottom so the
+ * least played courses migrate to the top.
  */
 
 /** Celebration marker set when a score actually changes: personal record or new course record. */
@@ -13,6 +17,8 @@ export type RecordEntry = {
   points: number;
   /** YYYY-MM-DD (Stockholm time) of the round. */
   date: string;
+  /** URL of the round's /räkna board message; the date renders as a link to it. */
+  link?: string;
   /**
    * Only /räkna runs that change a score rewrite flags (clearing the previous
    * ones); reformatting and no-change counts pass them through untouched.
@@ -26,7 +32,8 @@ const RECORDS_TITLE = "## Banrekord";
 const RECORDS_SUBTEXT = "-# Uppdateras automatiskt vid /räkna";
 const courseLineRegex = /^### (.+)$/;
 // The optional token between score and mention is the player's signature emoji;
-const entryLineRegex = /^`(\d+)` (?:\S+ )?<@(\d+)> (\d{4}-\d{2}-\d{2})( \[.+\])?$/;
+// the date is either plain or a masked link to the round's /räkna board
+const entryLineRegex = /^`(\d+)` (?:\S+ )?<@(\d+)> (?:\[(\d{4}-\d{2}-\d{2})\]\((\S+)\)|(\d{4}-\d{2}-\d{2}))( \[.+\])?$/;
 
 const FLAG_TEXT: Record<RecordFlag, string> = {
   pr: "[PR 🎉]",
@@ -39,22 +46,23 @@ function flagFromText(text: string | undefined): RecordFlag | undefined {
   return undefined;
 }
 
-export function formatRecords(records: CourseRecords, signatures: Record<string, string>, updatedAt: Date): string {
-  // Sections render in stored order - a freshly played course sinks to the bottom
-  // (see applyRoundResults), so the least played ones migrate to the top
-  const sections = records
-    .map(({ course, entries }) => {
-      const lines = [...entries]
-        .sort((a, b) => a.points - b.points || a.date.localeCompare(b.date))
-        .map((entry) => {
-          const signature = signatures[entry.userId];
-          const flag = entry.flag ? ` ${FLAG_TEXT[entry.flag]}` : "";
-          return `\`${entry.points}\`${signature ? ` ${signature}` : ""} <@${entry.userId}> ${entry.date}${flag}`;
-        });
-      return [`### ${course}`, ...lines].join("\n");
+/** The index message: title, subtext, and the "senast uppdaterad" stamp. */
+export function formatRecordsHeader(updatedAt: Date): string {
+  const stamp = updatedAt.toLocaleString("sv-SE", { timeZone: "Europe/Stockholm", dateStyle: "short", timeStyle: "short" });
+  return [RECORDS_TITLE, RECORDS_SUBTEXT, `-# Senast uppdaterad ${stamp}`].join("\n");
+}
+
+/** One course's pool message. */
+export function formatCourseSection(section: CourseRecords[number], signatures: Record<string, string>): string {
+  const lines = [...section.entries]
+    .sort((a, b) => a.points - b.points || a.date.localeCompare(b.date))
+    .map((entry) => {
+      const signature = signatures[entry.userId];
+      const date = entry.link ? `[${entry.date}](${entry.link})` : entry.date;
+      const flag = entry.flag ? ` ${FLAG_TEXT[entry.flag]}` : "";
+      return `\`${entry.points}\`${signature ? ` ${signature}` : ""} <@${entry.userId}> ${date}${flag}`;
     });
-  const updatedLine = `-# Senast uppdaterad ${updatedAt.toLocaleString("sv-SE", { timeZone: "Europe/Stockholm", dateStyle: "short", timeStyle: "short" })}`;
-  return [RECORDS_TITLE, RECORDS_SUBTEXT, "", sections.join("\n"), "", updatedLine].join("\n");
+  return [`### ${section.course}`, ...lines].join("\n");
 }
 
 /** Parses a record message back into records. Unknown lines are ignored, so a fresh seed message parses as empty. */
@@ -69,10 +77,17 @@ export function parseRecords(content: string): CourseRecords {
       continue;
     }
     const entryMatch = entryLineRegex.exec(line);
-    const [, points, userId, date, flagText] = entryMatch ?? [];
+    const [, points, userId, linkedDate, link, plainDate, flagText] = entryMatch ?? [];
+    const date = linkedDate ?? plainDate;
     if (!current || !points || !userId || !date) continue;
     const flag = flagFromText(flagText?.trim());
-    current.entries.push({ userId, points: parseInt(points, 10), date, ...flag ? { flag } : {} });
+    current.entries.push({
+      userId,
+      points: parseInt(points, 10),
+      date,
+      ...link ? { link } : {},
+      ...flag ? { flag } : {},
+    });
   }
   return records;
 }
@@ -110,6 +125,8 @@ export function applyRoundResults(records: CourseRecords, courseName: string, re
     else if (result.points < existing.points) {
       existing.points = result.points;
       existing.date = result.date;
+      if (result.link) existing.link = result.link;
+      else delete existing.link;
       improvedEntries.push(existing);
     }
   }

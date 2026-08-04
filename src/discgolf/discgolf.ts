@@ -5,7 +5,7 @@ import { Client as DiscordClient, Events, GatewayIntentBits, MessageFlags, Parti
 import type { Course, HoleScore } from "./courses";
 import { buildScoreTable, courseNameFrom, courseTotal, findCourse, formatRelative, holeScoreValue, loadCourses, missingHoles, parseScoreLine, relativeToPar } from "./courses";
 import type { CourseRecords, RecordEntry } from "./records";
-import { applyRoundResults, formatRecords, parseRecords } from "./records";
+import { applyRoundResults, formatCourseSection, formatRecordsHeader, parseRecords } from "./records";
 
 // Logger utility
 function log(level: "INFO" | "WARN" | "ERROR", message: string, data?: Record<string, unknown>) {
@@ -193,7 +193,7 @@ async function hjälp(interaction: ChatInputCommandInteraction) {
     "**DNF:** skriv något som inte är en siffra som poäng, t.ex. `5 dnf` — hålet räknas som par + 4 (PDGA 811).",
     "**/räkna:** räknar ihop senaste rundan och skickar resultatet. Rättat en felskriven poäng? Kör /räkna igen så uppdateras resultatet istället för att skickas om.",
     "**Saknade hål:** den som missat att skriva ett hål syns i kolumnen Saknad och blir pingad under tabellen. Hål som ingen skrivit räknas som överhoppade av gruppen.",
-    "**Banrekord:** uppdateras automatiskt vid /räkna. Bara hela rundor räknas (alla numrerade hål — X-hål är frivilliga extrahål). Nya rekord flaggas med [PR 🎉] eller [Banrekord!! 🥳] tills nästa poängändring, och banan flyttas längst ner så att de minst spelade banorna klättrar uppåt.",
+    "**Banrekord:** uppdateras automatiskt vid /räkna, en lista per bana. Bara hela rundor räknas (alla numrerade hål — X-hål är frivilliga extrahål). Nya rekord flaggas med [PR 🎉] eller [Banrekord!! 🥳] tills nästa poängändring, datumet länkar till rundans resultat, och banan flyttas längst ner så att de minst spelade banorna klättrar uppåt.",
     "**Signatur:** din reaktion på banrekord-meddelandet blir din emoji på rekordlistan.",
     "**/formatera:** ritar om banrekord-meddelandet utan att räkna något (plockar t.ex. upp nya signaturer).",
   ].join("\n");
@@ -295,22 +295,9 @@ async function räkna(interaction: ChatInputCommandInteraction) {
       return missing.length > 0 ? `<@${memberId}> har missat att skriva hål ${missing.join(", ")}` : undefined;
     })
     .filter((line): line is string => line !== undefined);
-  // Records survive on Discord as a bot-owned message, so a failed update must not eat the scoreboard
-  let recordLine = "";
-  if (course) {
-    try {
-      const newCourseBest = await updateCourseRecords(course, courseMessage, results);
-      if (newCourseBest) recordLine = `\n🏆 Nytt banrekord: ${newCourseBest.points} av <@${newCourseBest.userId}>!`;
-    }
-    catch (err) {
-      logError("Failed to update course records", err, { course: course.name, interactionId: interaction.id });
-    }
-  }
-
   const boardHeader = `-# ${fancyDate}\n${courseName}\n`;
   const out = boardHeader + `${lines.join("\n")}\n\`\`\`\n${table}\n\`\`\``
-    + (missingLines.length > 0 ? `\n${missingLines.join("\n")}` : "")
-    + recordLine;
+    + (missingLines.length > 0 ? `\n${missingLines.join("\n")}` : "");
   if (!("send" in writeChannel)) {
     logError("Write channel is not text-based", undefined, { channelId: writeChannel.id, interactionId: interaction.id });
     await interaction.reply({ content: "Write channel is not text-based.", flags: MessageFlags.Ephemeral });
@@ -333,16 +320,37 @@ async function räkna(interaction: ChatInputCommandInteraction) {
       && (m.content.startsWith(boardHeader) || m.content.startsWith(legacyHeader)))
     : undefined;
 
+  let boardMessage: Message;
   if (previousBoard) {
     await previousBoard.edit(out);
+    boardMessage = previousBoard;
     logInfo("Edited previous score message", { messageId: previousBoard.id, channelId: writeChannel.id, interactionId: interaction.id });
-    await interaction.reply({ content: `Uppdaterade det senaste resultatet med ${lines.length} resultat.`, flags: MessageFlags.Ephemeral });
   }
   else {
-    const sent = await writeChannel.send(out);
-    logInfo("Sent aggregated score message", { messageId: sent.id, channelId: writeChannel.id, interactionId: interaction.id });
-    await interaction.reply({ content: `Skickade ett meddelande med ${lines.length} resultat.`, flags: MessageFlags.Ephemeral });
+    boardMessage = await writeChannel.send(out);
+    logInfo("Sent aggregated score message", { messageId: boardMessage.id, channelId: writeChannel.id, interactionId: interaction.id });
   }
+
+  // Records update after the board exists - the entries link to its url. Records
+  // survive on Discord as bot-owned messages, so a failed update must not eat the board.
+  if (course) {
+    try {
+      const newCourseBest = await updateCourseRecords(course, courseMessage, results, boardMessage.url);
+      if (newCourseBest) {
+        await boardMessage.edit(out + `\n🏆 Nytt banrekord: ${newCourseBest.points} av <@${newCourseBest.userId}>!`);
+      }
+    }
+    catch (err) {
+      logError("Failed to update course records", err, { course: course.name, interactionId: interaction.id });
+    }
+  }
+
+  await interaction.reply({
+    content: previousBoard
+      ? `Uppdaterade det senaste resultatet med ${lines.length} resultat.`
+      : `Skickade ett meddelande med ${lines.length} resultat.`,
+    flags: MessageFlags.Ephemeral,
+  });
 }
 
 function getUserScore(userId: string, messages: Message[], courseMessage: Message, course: Course | undefined): {
@@ -374,44 +382,79 @@ function getUserScore(userId: string, messages: Message[], courseMessage: Messag
   return { points, score };
 }
 
-/** Folds the round's full-course results into the record message; returns the new course best if one was set. */
-async function updateCourseRecords(course: Course, courseMessage: Message, results: { memberId: string; score: Record<string, HoleScore> }[]): Promise<RecordEntry | undefined> {
-  const roundDate = new Date(courseMessage.createdTimestamp).toLocaleDateString("sv-SE", { timeZone: "Europe/Stockholm" });
-  const eligible: RecordEntry[] = results
-    .map(({ memberId, score }) => ({ userId: memberId, points: courseTotal(course, score), date: roundDate }))
-    .filter((entry): entry is RecordEntry => entry.points !== undefined);
+type RecordPool = {
+  /** Holds the title, the "senast uppdaterad" stamp, and the signature reactions. */
+  indexMessage: Message;
+  /** One message per course, oldest first - the board order. */
+  courseMessages: { message: Message; section: CourseRecords[number] }[];
+};
 
-  const recordMessage = await fetchRecordMessage();
-  const records = parseRecords(recordMessage.content);
-  const { improved, newCourseBest } = applyRoundResults(records, course.name, eligible);
-  // Edited on every /räkna, improved or not - "Senast uppdaterad" doubles as proof
-  // that the latest count verified the records
-  await renderRecordMessage(recordMessage, records);
-  logInfo("Updated record message", { course: course.name, eligibleCount: eligible.length, improved, newBest: newCourseBest?.points });
-  return newCourseBest;
-}
-
-/** Re-renders the record message in place: current signatures, formatting, and timestamp. */
-async function formatera(interaction: ChatInputCommandInteraction) {
-  logInfo("formatera command started", { userId: interaction.user.id, interactionId: interaction.id });
-  const recordMessage = await fetchRecordMessage();
-  const records = parseRecords(recordMessage.content);
-  await renderRecordMessage(recordMessage, records);
-  logInfo("formatera command finished", { interactionId: interaction.id });
-  await interaction.reply({ content: "Banrekord-meddelandet har formaterats om.", flags: MessageFlags.Ephemeral });
-}
-
-async function fetchRecordMessage(): Promise<Message> {
+async function fetchRecordPool(): Promise<RecordPool> {
   const recordChannel = await discordClient.channels.fetch(DISCGOLF_RECORD_CHANNEL_ID);
   if (!recordChannel?.isTextBased()) throw new Error("Record channel not found or is not text-based");
   // force skips the message cache - the bot gets no reaction gateway events, so a
   // cached copy would keep the reaction (signature) state from when it was first fetched
-  return await recordChannel.messages.fetch({ message: DISCGOLF_RECORD_MESSAGE_ID, force: true });
+  const indexMessage = await recordChannel.messages.fetch({ message: DISCGOLF_RECORD_MESSAGE_ID, force: true });
+  const recent = await recordChannel.messages.fetch({ limit: 100 });
+  const botId = discordClient.user?.id;
+  const courseMessages = [...recent.values()]
+    .filter((m) => m.author.id === botId && m.id !== indexMessage.id && m.content.startsWith("### "))
+    .reverse()
+    .flatMap((message) => parseRecords(message.content).map((section) => ({ message, section })));
+  return { indexMessage, courseMessages };
 }
 
-async function renderRecordMessage(recordMessage: Message, records: CourseRecords): Promise<void> {
-  const signatures = await signaturesFromReactions(recordMessage);
-  await recordMessage.edit(formatRecords(records, signatures, new Date()));
+/** Folds the round's full-course results into the record pool; returns the new course best if one was set. */
+async function updateCourseRecords(course: Course, courseMessage: Message, results: { memberId: string; score: Record<string, HoleScore> }[], boardUrl: string): Promise<RecordEntry | undefined> {
+  const roundDate = new Date(courseMessage.createdTimestamp).toLocaleDateString("sv-SE", { timeZone: "Europe/Stockholm" });
+  const eligible: RecordEntry[] = results.flatMap(({ memberId, score }) => {
+    const points = courseTotal(course, score);
+    return points === undefined ? [] : [{ userId: memberId, points, date: roundDate, link: boardUrl }];
+  });
+
+  const pool = await fetchRecordPool();
+  const records = pool.courseMessages.map(({ section }) => section);
+  const { improved, newCourseBest } = applyRoundResults(records, course.name, eligible);
+
+  if (improved) {
+    const signatures = await signaturesFromReactions(pool.indexMessage);
+    const roundSection = records.find((section) => section.course.toLowerCase() === course.name.toLowerCase());
+    const existing = pool.courseMessages.find(({ section }) => section === roundSection);
+    // Delete + resend sinks the course's message to the bottom; parse: [] keeps
+    // the mentions rendering without pinging anyone
+    if (existing) await existing.message.delete();
+    if (roundSection && "send" in pool.indexMessage.channel) {
+      await pool.indexMessage.channel.send({
+        content: formatCourseSection(roundSection, signatures),
+        allowedMentions: { parse: [] },
+      });
+    }
+    // The score change cleared flags on the other courses - re-render those in place
+    for (const { message, section } of pool.courseMessages) {
+      if (section === roundSection) continue;
+      const content = formatCourseSection(section, signatures);
+      if (content !== message.content) await message.edit(content);
+    }
+  }
+  // Stamped on every /räkna, improved or not - "Senast uppdaterad" doubles as proof
+  // that the latest count verified the records
+  await pool.indexMessage.edit(formatRecordsHeader(new Date()));
+  logInfo("Updated record pool", { course: course.name, eligibleCount: eligible.length, improved, newBest: newCourseBest?.points });
+  return newCourseBest;
+}
+
+/** Re-renders every record message in place: current signatures, formatting, and timestamp. Order is untouched. */
+async function formatera(interaction: ChatInputCommandInteraction) {
+  logInfo("formatera command started", { userId: interaction.user.id, interactionId: interaction.id });
+  const pool = await fetchRecordPool();
+  const signatures = await signaturesFromReactions(pool.indexMessage);
+  for (const { message, section } of pool.courseMessages) {
+    const content = formatCourseSection(section, signatures);
+    if (content !== message.content) await message.edit(content);
+  }
+  await pool.indexMessage.edit(formatRecordsHeader(new Date()));
+  logInfo("formatera command finished", { courseCount: pool.courseMessages.length, interactionId: interaction.id });
+  await interaction.reply({ content: `Formaterade om banrekord (${pool.courseMessages.length} banor).`, flags: MessageFlags.Ephemeral });
 }
 
 /** Each player's signature emoji is their own reaction on the record message; their first reaction wins. */
