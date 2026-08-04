@@ -62,6 +62,21 @@ await test("formatCourseSection puts the oldest score on top in a tie", () => {
   ]);
 });
 
+await test("a co-op team entry renders every member on one line and round-trips", () => {
+  const section: CourseRecords[number] = {
+    course: "Rosendal (co-op)",
+    entries: [{ userId: "1,2", points: 39, date: "2026-08-05", flag: "rekord" }],
+  };
+
+  // No signature for a team, even when a member has one of their own
+  const content = formatCourseSection(section, { "1": "🩷" });
+  assert.equal(content, [
+    "### Rosendal (co-op)",
+    "`39` <@1> <@2> 2026-08-05 [Rekord!! 🥳]",
+  ].join("\n"));
+  assert.deepEqual(parseRecords(content), [section]);
+});
+
 await test("record flags render, round-trip, and survive reformatting", () => {
   const records: CourseRecords = [{
     course: "Rosendal",

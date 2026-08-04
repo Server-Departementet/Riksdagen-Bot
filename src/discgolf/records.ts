@@ -13,6 +13,7 @@
 export type RecordFlag = "pr" | "rekord";
 
 export type RecordEntry = {
+  /** Discord user id - or comma-joined sorted ids for a co-op team. */
   userId: string;
   points: number;
   /** YYYY-MM-DD (Stockholm time) of the round. */
@@ -31,9 +32,11 @@ export type CourseRecords = { course: string; entries: RecordEntry[] }[];
 const RECORDS_TITLE = "## Rekord";
 const RECORDS_SUBTEXT = "-# Uppdateras automatiskt vid /räkna";
 const courseLineRegex = /^### (.+)$/;
-// The optional token between score and mention is the player's signature emoji;
-// the date is either plain or a masked link to the round's /räkna board
-const entryLineRegex = /^`(\d+)` (?:\S+ )?<@(\d+)> (?:\[(\d{4}-\d{2}-\d{2})\]\((\S+)\)|(\d{4}-\d{2}-\d{2}))( \[.+\])?$/;
+// The optional token between score and mentions is the player's signature emoji
+// (the lookahead keeps it from swallowing a team's first mention); a co-op team
+// entry has one mention per member; the date is either plain or a masked link
+// to the round's /räkna board
+const entryLineRegex = /^`(\d+)` (?:(?!<@)\S+ )?(<@\d+>(?: <@\d+>)*) (?:\[(\d{4}-\d{2}-\d{2})\]\((\S+)\)|(\d{4}-\d{2}-\d{2}))( \[.+\])?$/;
 
 const FLAG_TEXT: Record<RecordFlag, string> = {
   pr: "[PR 🎉]",
@@ -60,9 +63,10 @@ export function formatCourseSection(section: CourseRecords[number], signatures: 
     .sort((a, b) => a.points - b.points || a.date.localeCompare(b.date))
     .map((entry) => {
       const signature = signatures[entry.userId];
+      const mentions = entry.userId.split(",").map((id) => `<@${id}>`).join(" ");
       const date = entry.link ? `[${entry.date}](${entry.link})` : entry.date;
       const flag = entry.flag ? ` ${FLAG_TEXT[entry.flag]}` : "";
-      return `\`${entry.points}\`${signature ? ` ${signature}` : ""} <@${entry.userId}> ${date}${flag}`;
+      return `\`${entry.points}\`${signature ? ` ${signature}` : ""} ${mentions} ${date}${flag}`;
     });
   return [`### ${section.course}`, ...lines].join("\n");
 }
@@ -79,9 +83,13 @@ export function parseRecords(content: string): CourseRecords {
       continue;
     }
     const entryMatch = entryLineRegex.exec(line);
-    const [, points, userId, linkedDate, link, plainDate, flagText] = entryMatch ?? [];
+    const [, points, mentions, linkedDate, link, plainDate, flagText] = entryMatch ?? [];
     const date = linkedDate ?? plainDate;
-    if (!current || !points || !userId || !date) continue;
+    if (!current || !points || !mentions || !date) continue;
+    const userId = [...mentions.matchAll(/<@(\d+)>/g)]
+      .flatMap((m) => m[1] ? [m[1]] : [])
+      .sort()
+      .join(",");
     const flag = flagFromText(flagText?.trim());
     current.entries.push({
       userId,

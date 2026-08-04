@@ -80,20 +80,40 @@ export function findCourse(courses: Course[], name: string): Course | undefined 
 const COURSE_NAME_MIN_LENGTH = 3;
 const COURSE_NAME_MAX_LENGTH = 30;
 
+export type CoopRound = {
+  courseName: string;
+  /** User ids per team, in bracket order. Empty means one implicit team of everyone who logs scores. */
+  teams: string[][];
+};
+
+/** Parses a co-op round-start line: "«bana» coop [<@a> <@b>] vs [<@c> <@d>]". Teams are optional. */
+export function parseCoopLine(line: string): CoopRound | undefined {
+  const match = /^(.+?)\s+co-?op\b(.*)$/i.exec(line.trim());
+  if (!match?.[1] || match[2] === undefined) return undefined;
+  const teams = [...match[2].matchAll(/\[([^\]]*)\]/g)]
+    .map((group) => [...(group[1] ?? "").matchAll(/<@!?(\d+)>/g)].flatMap((m) => m[1] ? [m[1]] : []))
+    .filter((team) => team.length > 0);
+  return { courseName: match[1].trim(), teams };
+}
+
 /**
  * The course-name line if this message starts a round: any first line that
- * isn't shaped like a score line. The score channel is strictly no-chat, so
- * everything else within a sane length is trusted to be a course name. Score
- * lines may follow on later lines ("Rosendal\n1 4"), so a forgotten course
- * name can be fixed by editing it into the top of the first score message.
+ * isn't shaped like a score line, including co-op round starts (where the
+ * course part of the line is the name). The score channel is strictly
+ * no-chat, so everything else within a sane length is trusted to be a course
+ * name. Score lines may follow on later lines ("Rosendal\n1 4"), so a
+ * forgotten course name can be fixed by editing it into the top of the first
+ * score message.
  */
 export function courseNameFrom(courses: Course[], content: string): string | undefined {
   const firstLine = content.split("\n")[0]?.trim() ?? "";
-  if (findCourse(courses, firstLine)) return firstLine;
+  const coop = parseCoopLine(firstLine);
+  const candidate = coop ? coop.courseName : firstLine;
+  if (findCourse(courses, candidate)) return candidate;
   // Shape only, not validity: a typo like "5 45" must stay a score line
-  if (scoreLineRegex.test(firstLine)) return undefined;
-  return firstLine.length >= COURSE_NAME_MIN_LENGTH && firstLine.length <= COURSE_NAME_MAX_LENGTH
-    ? firstLine
+  if (scoreLineRegex.test(candidate)) return undefined;
+  return candidate.length >= COURSE_NAME_MIN_LENGTH && candidate.length <= COURSE_NAME_MAX_LENGTH
+    ? candidate
     : undefined;
 }
 

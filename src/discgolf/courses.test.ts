@@ -11,6 +11,7 @@ import {
   courseNameFrom,
   loadCourses,
   missingHoles,
+  parseCoopLine,
   parseCourseFile,
   parseScoreLine,
   relativeToPar,
@@ -87,6 +88,27 @@ await test("courseNameFrom treats any non-score first line as a course name", ()
   assert.equal(courseNameFrom(courses, "1 4\n2 3"), undefined);
   assert.equal(courseNameFrom(courses, "X1 3"), undefined);
   assert.equal(courseNameFrom(courses, "5 45"), undefined); // typo, but still a score line
+});
+
+await test("parseCoopLine parses course and optional teams", () => {
+  assert.deepEqual(parseCoopLine("Rosendal coop [<@1> <@2>] vs [<@3> <@4>]"), {
+    courseName: "Rosendal",
+    teams: [["1", "2"], ["3", "4"]],
+  });
+  assert.deepEqual(parseCoopLine("Gränby parken co-op [<@!1> <@2>]"), {
+    courseName: "Gränby parken",
+    teams: [["1", "2"]],
+  });
+  // No teams: everyone who logs scores plays as one implicit team
+  assert.deepEqual(parseCoopLine("Rosendal coop"), { courseName: "Rosendal", teams: [] });
+  assert.equal(parseCoopLine("Rosendal"), undefined);
+});
+
+await test("courseNameFrom sees the course through a co-op round start", () => {
+  const courses = [parseCourseFile("rosendal, rosen\n1 3\n", "rosendal")];
+
+  assert.equal(courseNameFrom(courses, "Rosen coop [<@1>] vs [<@2>]\n1 4"), "Rosen");
+  assert.equal(courseNameFrom(courses, "Okänd bana coop"), "Okänd bana");
 });
 
 await test("courseTotal sums numbered holes only and requires all of them", () => {

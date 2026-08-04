@@ -3,7 +3,7 @@ import path from "node:path";
 import type { ChatInputCommandInteraction, Message } from "discord.js";
 import { Client as DiscordClient, Events, GatewayIntentBits, MessageFlags, Partials, REST, Routes, SlashCommandBuilder } from "discord.js";
 import type { Course, HoleScore } from "./courses";
-import { buildScoreTable, courseNameFrom, courseTotal, findCourse, formatRelative, holeScoreValue, loadCourses, missingHoles, parseScoreLine, relativeToPar } from "./courses";
+import { buildScoreTable, courseNameFrom, courseTotal, findCourse, formatRelative, holeScoreValue, loadCourses, missingHoles, parseCoopLine, parseScoreLine, relativeToPar } from "./courses";
 import type { CourseRecords, RecordEntry } from "./records";
 import { applyRoundResults, formatCourseSection, formatRecordsHeader, parseRecords } from "./records";
 
@@ -194,6 +194,7 @@ async function hjälp(interaction: ChatInputCommandInteraction) {
     "**Starta en runda:** skicka banans namn som ett eget meddelande — eller som första raden i ditt första poängmeddelande om du glömde. Allt som inte ser ut som en poängrad tolkas som ett bannamn. Botten reagerar ✅ när banan finns i katalogen och ❓ när den är okänd (då finns inga par).",
     "**Logga poäng:** en rad per hål: `<hål> <kast>`, t.ex. `4 5` eller `X1 3`.",
     "**DNF:** skriv något som inte är en siffra som poäng, t.ex. `5 dnf` — hålet räknas som par + 4 (PDGA 811).",
+    "**Co-op:** starta rundan med `<bana> coop [@spelare @spelare] vs [@spelare @spelare]`. Lagen är valfria — utan lag spelar alla som loggar poäng i ett gemensamt lag. Vem som helst i laget skriver lagets poäng, laget står på en gemensam rad i resultatet, och co-op räknas helt separat från vanliga rundor med egna rekordlistor.",
     "**/räkna:** räknar ihop senaste rundan och skickar resultatet. Rättat en felskriven poäng? Kör /räkna igen så uppdateras resultatet istället för att skickas om.",
     "**Saknade hål:** den som missat att skriva ett hål syns i kolumnen Saknad och blir pingad under tabellen. Hål som ingen skrivit räknas som överhoppade av gruppen.",
     "**Rekord:** uppdateras automatiskt vid /räkna, en lista per bana. Bara hela rundor räknas (alla numrerade hål — X-hål är frivilliga extrahål). Nya rekord flaggas med [PR 🎉] eller [Rekord!! 🥳] tills nästa poängändring, datumet länkar till rundans resultat, och banan flyttas längst ner så att de minst spelade banorna klättrar uppåt.",
@@ -303,12 +304,25 @@ async function runRäkna(interaction: ChatInputCommandInteraction) {
   await guild.members.fetch();
   // Includes the round's start time so two rounds on the same course and day get distinct headers
   const fancyDate = new Date(courseMessage.createdTimestamp).toLocaleString("sv-SE", { timeZone: "Europe/Stockholm", dateStyle: "long", timeStyle: "short" });
-  const results: { memberId: string; name: string; points: number; score: Record<string, HoleScore> }[] = [];
-  for (const member of guild.members.cache.values()) {
-    if (member.user.bot) continue;
-    const { points, score } = getUserScore(member.id, allMessages.toJSON(), courseMessage, course);
+  // A co-op round scores per team instead of per player; without explicit
+  // teams, everyone who logged scores plays as one implicit team
+  const coop = parseCoopLine(courseMessage.content.split("\n")[0]?.trim() ?? "");
+  const humanMemberIds = [...guild.members.cache.values()]
+    .filter((member) => !member.user.bot)
+    .map((member) => member.id);
+  const scoringUnits: string[][] = coop
+    ? (coop.teams.length > 0
+      ? coop.teams
+      : [humanMemberIds.filter((id) => Object.keys(getScore([id], allMessages.toJSON(), courseMessage, course).score).length > 0)])
+    : humanMemberIds.map((id) => [id]);
+
+  const results: { memberIds: string[]; name: string; points: number; score: Record<string, HoleScore> }[] = [];
+  for (const memberIds of scoringUnits) {
+    if (memberIds.length === 0) continue;
+    const { points, score } = getScore(memberIds, allMessages.toJSON(), courseMessage, course);
     if (Object.keys(score).length === 0) continue;
-    results.push({ memberId: member.id, name: member.displayName, points, score });
+    const name = memberIds.map((id) => guild.members.cache.get(id)?.displayName ?? id).join(" & ");
+    results.push({ memberIds, name, points, score });
   }
 
   if (results.length === 0) {
@@ -317,16 +331,16 @@ async function runRäkna(interaction: ChatInputCommandInteraction) {
   }
 
   results.sort((a, b) => a.points - b.points);
-  const lines = results.map(({ memberId, points, score }) =>
-    `<@${memberId}> - totalt ${points}${formatScoreSuffix(course, score)}`,
+  const lines = results.map(({ memberIds, points, score }) =>
+    `${mentionList(memberIds)} - totalt ${points}${formatScoreSuffix(course, score)}`,
   );
   const players = results.map(({ name, score }) => ({ name, score }));
   const table = buildScoreTable(course, players);
   // Mentions inside a code block neither render nor ping, so the reminders go after the table
   const missingLines = results
-    .map(({ memberId, score }) => {
+    .map(({ memberIds, score }) => {
       const missing = missingHoles(course, players, score);
-      return missing.length > 0 ? `<@${memberId}> har missat att skriva hål ${missing.join(", ")}` : undefined;
+      return missing.length > 0 ? `${mentionList(memberIds)} har missat att skriva hål ${missing.join(", ")}` : undefined;
     })
     .filter((line): line is string => line !== undefined);
   const boardHeader = `-# ${fancyDate}\n${courseName}\n`;
@@ -369,9 +383,11 @@ async function runRäkna(interaction: ChatInputCommandInteraction) {
   // survive on Discord as bot-owned messages, so a failed update must not eat the board.
   if (course) {
     try {
-      const newCourseBest = await updateCourseRecords(course, courseMessage, results, boardMessage.url);
+      // Co-op rounds get their own record list per course and never touch personal records
+      const sectionName = coop ? `${course.name} (co-op)` : course.name;
+      const newCourseBest = await updateCourseRecords(sectionName, course, courseMessage, results, boardMessage.url);
       if (newCourseBest) {
-        await boardMessage.edit(out + `\n🏆 Nytt rekord: ${newCourseBest.points} av <@${newCourseBest.userId}>!`);
+        await boardMessage.edit(out + `\n🏆 Nytt rekord: ${newCourseBest.points} av ${mentionList(newCourseBest.userId.split(","))}!`);
       }
     }
     catch (err) {
@@ -387,14 +403,19 @@ async function runRäkna(interaction: ChatInputCommandInteraction) {
   });
 }
 
-function getUserScore(userId: string, messages: Message[], courseMessage: Message, course: Course | undefined): {
+function mentionList(ids: readonly string[]): string {
+  return ids.map((id) => `<@${id}>`).join(" & ");
+}
+
+/** The merged score for one scoring unit: a player, or every member of a co-op team. */
+function getScore(authorIds: readonly string[], messages: Message[], courseMessage: Message, course: Course | undefined): {
   points: number;
   score: Record<string, HoleScore>;
 } {
   const score: Record<string, HoleScore> = {};
-  logInfo("Calculating score for user", { userId, courseMessageId: courseMessage.id, course: courseMessage.content });
+  logInfo("Calculating score", { authorIds, courseMessageId: courseMessage.id, course: courseMessage.content });
   for (const message of messages) {
-    if (message.author.id !== userId) continue;
+    if (!authorIds.includes(message.author.id)) continue;
     // The round-start message itself may carry the author's scores below the course name
     const isRoundStart = message.id === courseMessage.id;
     if (!isRoundStart) {
@@ -412,7 +433,7 @@ function getUserScore(userId: string, messages: Message[], courseMessage: Messag
   }
 
   const points = Object.entries(score).reduce((sum, [holeId, holeScore]) => sum + (holeScoreValue(course, holeId, holeScore) ?? 0), 0);
-  logInfo("Finished calculating user score", { userId, totalPoints: points, entries: score });
+  logInfo("Finished calculating score", { authorIds, totalPoints: points, entries: score });
   return { points, score };
 }
 
@@ -439,20 +460,20 @@ async function fetchRecordPool(): Promise<RecordPool> {
 }
 
 /** Folds the round's full-course results into the record pool; returns the new course best if one was set. */
-async function updateCourseRecords(course: Course, courseMessage: Message, results: { memberId: string; score: Record<string, HoleScore> }[], boardUrl: string): Promise<RecordEntry | undefined> {
+async function updateCourseRecords(sectionName: string, course: Course, courseMessage: Message, results: { memberIds: string[]; score: Record<string, HoleScore> }[], boardUrl: string): Promise<RecordEntry | undefined> {
   const roundDate = new Date(courseMessage.createdTimestamp).toLocaleDateString("sv-SE", { timeZone: "Europe/Stockholm" });
-  const eligible: RecordEntry[] = results.flatMap(({ memberId, score }) => {
+  const eligible: RecordEntry[] = results.flatMap(({ memberIds, score }) => {
     const points = courseTotal(course, score);
-    return points === undefined ? [] : [{ userId: memberId, points, date: roundDate, link: boardUrl }];
+    return points === undefined ? [] : [{ userId: [...memberIds].sort().join(","), points, date: roundDate, link: boardUrl }];
   });
 
   const pool = await fetchRecordPool();
   const records = pool.courseMessages.map(({ section }) => section);
-  const { improved, newCourseBest } = applyRoundResults(records, course.name, eligible);
+  const { improved, newCourseBest } = applyRoundResults(records, sectionName, eligible);
 
   if (improved) {
     const signatures = await signaturesFromReactions(pool.indexMessage);
-    const roundSection = records.find((section) => section.course.toLowerCase() === course.name.toLowerCase());
+    const roundSection = records.find((section) => section.course.toLowerCase() === sectionName.toLowerCase());
     const existing = pool.courseMessages.find(({ section }) => section === roundSection);
     // Delete + resend sinks the course's message to the bottom; parse: [] keeps
     // the mentions rendering without pinging anyone
@@ -473,7 +494,7 @@ async function updateCourseRecords(course: Course, courseMessage: Message, resul
   // Stamped on every /räkna, improved or not - "Senast uppdaterad" doubles as proof
   // that the latest count verified the records
   await pool.indexMessage.edit(formatRecordsHeader(new Date()));
-  logInfo("Updated record pool", { course: course.name, eligibleCount: eligible.length, improved, newBest: newCourseBest?.points });
+  logInfo("Updated record pool", { section: sectionName, eligibleCount: eligible.length, improved, newBest: newCourseBest?.points });
   return newCourseBest;
 }
 

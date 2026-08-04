@@ -34,11 +34,15 @@
 
 ## 4. Co-op support (depends on 2 for course-line syntax and 3 for board layout)
 
-- [ ] co-op support
-  - [ ] have a syntax for coop course messages. Like `<course> coop|co-op   [<@user> <@user> ...] vs [<@user> <@user> ...]`
-  - [ ] separate scoring from regular games (own records, doesn't touch personal ones)
-  - [ ] shown on leaderboard
-  - update /hjälp
+- [x] co-op support
+  - [x] syntax: `<course> coop|co-op [<@user> <@user> ...] [vs] [<@user> <@user> ...]` — "vs" is
+    optional filler between the bracket groups; teams themselves are optional too, and no teams
+    means everyone who logs scores plays as one implicit team
+  - [x] separate scoring from regular games — co-op records live in their own `### Bana (co-op)`
+    pool sections keyed by team constellation (sorted ids), personal records untouched
+  - [x] shown on leaderboard — each team is one line with all its mentions, one shared score
+    (any member logs), same DNF/missing/record mechanics as solo
+  - [x] /hjälp updated
 
 ## On hold
 
