@@ -159,10 +159,13 @@ async function ackCourseMessage(message: Message) {
     ? undefined
     : findCourse(courses, courseName) ? COURSE_ACK_KNOWN : COURSE_ACK_UNKNOWN;
 
+  // The reaction cache goes stale after the bot's own removals (no reaction
+  // gateway events), so reconcile against a fresh fetch of the true state
+  const fresh = await message.fetch(true);
   for (const emoji of [COURSE_ACK_KNOWN, COURSE_ACK_UNKNOWN]) {
-    const existing = message.reactions.cache.find((reaction) => reaction.emoji.name === emoji && reaction.me);
+    const existing = fresh.reactions.cache.find((reaction) => reaction.emoji.name === emoji && reaction.me);
     if (emoji !== desired && existing) await existing.users.remove();
-    if (emoji === desired && !existing) await message.react(emoji);
+    if (emoji === desired && !existing) await fresh.react(emoji);
   }
   if (desired) {
     logInfo("Acknowledged course message", { messageId: message.id, courseName, known: desired === COURSE_ACK_KNOWN });
