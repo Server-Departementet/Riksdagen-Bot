@@ -24,7 +24,8 @@
   - kills the 2000-char ceiling on the single board message
   - [ ] include link to the /räkna message on record entries — was blocked by message length before,
     per-course messages make it fit
-  - decide where signature reactions live once there are several messages (index/header message?)
+  <!-- - decide where signature reactions live once there are several messages (index/header message?) -->
+  - the bot will have a pool of messages, one for each course (and their played coop variants) and will edit this pool freely to avoid state management. This will lead to a parse or the entire things, keep it in memory, then edit N messages. Alternatively it could just delete the old message and resend, which would auto fix the "last updated" ordering but will also spam mentions.
   - one-time migration script from the current single message
   - update /hjälp
 
