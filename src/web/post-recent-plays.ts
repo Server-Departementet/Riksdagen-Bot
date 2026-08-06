@@ -4,7 +4,6 @@ import type { Prisma } from "@/lib/prisma-web/generated/client";
 import { PrismaClient } from "@/lib/prisma-web/generated/client";
 import { makeMariaDBAdapter } from "@/lib/prisma";
 import { refreshSpotifyAccessToken } from "./spotify-auth";
-import { filterNearDuplicatePlays, PLAY_DEDUPE_TOLERANCE_MS } from "./play-dedupe";
 import type SpotifyApi from "spotify-web-api-node";
 import type { UsersRecentlyPlayedTracksResponse } from "./types";
 
@@ -248,27 +247,16 @@ async function addRecentTrackPlays() {
             trackId: item.track.id,
           })) satisfies Prisma.TrackPlayCreateManyInput[];
 
-        // Exact PK duplicates are handled by skipDuplicates below, but takeout-imported
-        // plays sit seconds off from the API's played_at — dedupe those with a tolerance
-        const playTimes = candidatePlays.map((play) => play.playedAt.getTime());
-        const storedPlays = candidatePlays.length === 0 ? [] : await prisma.trackPlay.findMany({
-          where: {
-            userId: dbUser.id,
-            trackId: { in: candidatePlays.map((play) => play.trackId) },
-            playedAt: {
-              gte: new Date(Math.min(...playTimes) - PLAY_DEDUPE_TOLERANCE_MS),
-              lte: new Date(Math.max(...playTimes) + PLAY_DEDUPE_TOLERANCE_MS),
-            },
-          },
-          select: { trackId: true, playedAt: true },
-        });
-        const newPlays = filterNearDuplicatePlays(candidatePlays, storedPlays);
-
-        await prisma.trackPlay.createMany({
+        // The API reports played_at exactly as it stored it, so re-reading the same play
+        // across runs collides on the (trackId, playedAt, userId) PK and skipDuplicates
+        // handles it. No tolerance window here — a repeat play seconds after the last one
+        // is real listening, and dropping it loses data permanently. Takeout imports are
+        // the only source with drifting timestamps, and they dedupe on their own side.
+        const inserted = await prisma.trackPlay.createMany({
           skipDuplicates: true,
-          data: newPlays,
+          data: candidatePlays,
         });
-        console.info(`Inserted ${newPlays.length} track plays (${candidatePlays.length - newPlays.length} near-duplicates dropped).`);
+        console.info(`Inserted ${inserted.count} track plays (${candidatePlays.length - inserted.count} already stored).`);
       })
         .catch((err: unknown) => {
           console.error(`Error upserting data for user ${username}:`, err);
