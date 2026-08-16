@@ -48,3 +48,8 @@
 
 - whispered (DM) confirmations, running total + par per hole (feature channel, Vena/Liz) —
   parked in favor of the reaction acknowledgement
+
+
+## Data analysis
+- [x] best segmented round on all courses per player and of all players.
+  - report: `../spliced-runs.md` (workspace root, from `score-channel-messages.json`), published as artifact 2026-08-05
