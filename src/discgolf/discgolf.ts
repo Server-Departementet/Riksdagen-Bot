@@ -6,6 +6,7 @@ import type { Course, HoleScore } from "./courses";
 import { buildScoreTable, courseNameFrom, courseTotal, findCourse, formatRelative, holeScoreValue, loadCourses, missingHoles, parseCoopLine, parseScoreLine, relativeToPar } from "./courses";
 import type { CourseRecords, RecordEntry } from "./records";
 import { applyRoundResults, formatCourseSection, formatRecordsHeader, parseRecords } from "./records";
+import { registerMonitor } from "../monitor/monitor";
 
 // Logger utility
 function log(level: "INFO" | "WARN" | "ERROR", message: string, data?: Record<string, unknown>) {
@@ -58,6 +59,10 @@ const discordClient = new DiscordClient({
   // edited into an old score message after a restart) emit no MessageUpdate event
   partials: [Partials.Message],
 });
+
+// Edit/delete logging for the monitored guild rides on this client - the only
+// persistent gateway connection (quiz and quotes run as cron one-shots)
+registerMonitor(discordClient);
 
 const commands = [
   new SlashCommandBuilder()
