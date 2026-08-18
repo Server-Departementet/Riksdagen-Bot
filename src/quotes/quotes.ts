@@ -10,6 +10,7 @@ import { isMultiSpeakerQuote, quoteAttributionSplitRegex, splitCustomQuoteMeta, 
 import { Client as DiscordClient, GatewayIntentBits } from "discord.js";
 import { attachmentDir, getAttachmentPath } from "./types";
 import { toQuoteData } from "./quote-db";
+import { syncQuotesToWebDatabases } from "./web-sync";
 
 const nameVariants: Record<string, string[]> = aliases;
 if (Object.keys(nameVariants).length === 0) {
@@ -69,7 +70,7 @@ async function main() {
 
   const quotesWithContext: Quote[] = quotes.map(extractContext).filter(q => q !== null);
 
-  // Upsert into the canonical store: the bot-hosted DB the web app reads over LAN.
+  // Upsert into the canonical store: the bot's own database (quiz + stats read this).
   for (const quote of quotesWithContext) {
     const data = toQuoteData(quote);
     await prisma.quote.upsert({
@@ -79,6 +80,9 @@ async function main() {
     });
   }
   console.info(`Upserted ${quotesWithContext.length} quotes into the database.`);
+
+  // Inject a copy into the web databases (prod bot only; no-op when unconfigured)
+  await syncQuotesToWebDatabases(quotesWithContext);
 
   // Save normalized quotes to file (debug artifact)
   fs.mkdirSync("src/quotes/out", { recursive: true });

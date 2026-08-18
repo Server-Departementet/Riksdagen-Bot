@@ -1,7 +1,8 @@
-// Mirror of the Riksdagen web app's database.
-// The web repo owns this schema and its migrations (Riksdagen/prisma/schema.prisma);
-// keep this file in sync. The backend writes User (make-users), the music tables and
-// TrackPlay (post-recent-plays), and reads/updates SpotifyAccount refresh tokens.
+// Minimal mirror of the Riksdagen web app's Quote table.
+// The web repo owns that schema and its migrations (Riksdagen/prisma/schema.prisma);
+// keep this model in sync. The PROD bot deployment injects quotes into BOTH the
+// prod and dev web databases over LAN (see src/quotes/web-sync.ts); the dev bot
+// deployment configures no web databases and injects nothing.
 generator client {
   provider = "prisma-client"
   moduleFormat = "esm"
@@ -12,76 +13,20 @@ datasource db {
   provider = "mysql"
 }
 
-model User {
-  id   String  @id // Discord ID
-  name String?
+model Quote {
+  id               String   @id // Discord message ID
+  authorId         String
+  createdTimestamp BigInt // ms epoch
+  link             String
+  originalLink     String?
 
-  trackPlays     TrackPlay[]
-  spotifyAccount SpotifyAccount?
-}
+  sender String
+  body   String @db.Text
+  quotee String
 
-// Spotify OAuth refresh tokens, written by the web app's /api/auth/callback/spotify
-// and consumed by src/web/post-recent-plays.ts
-model SpotifyAccount {
-  userId String @id
-  user   User   @relation(fields: [userId], references: [id])
+  quoteeId    String?
+  context     String? @db.Text
+  attachments Json?
 
-  refreshToken String   @db.Text
-  scope        String?
-  connectedAt  DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-}
-
-model TrackPlay {
-  playedAt DateTime
-  imported Boolean  @default(false) // Play came from a takeout history import, not the recently-played job
-
-  user    User   @relation(fields: [userId], references: [id])
-  userId  String
-  track   Track  @relation(fields: [trackId], references: [id])
-  trackId String
-
-  @@id([trackId, playedAt, userId])
-  @@index([playedAt])
-}
-
-model Track {
-  id       String @id // Spotify's track UID
-  ISRC     String
-  url      String
-  name     String
-  duration Int // Milliseconds
-
-  album      Album       @relation(fields: [albumId], references: [id])
-  albumId    String
-  artists    Artist[]
-  TrackPlays TrackPlay[]
-}
-
-model Artist {
-  id    String  @id // Spotify's artist UID
-  name  String
-  url   String
-  image String?
-  color String?
-
-  tracks Track[]
-  genres Genre[]
-}
-
-model Album {
-  id          String    @id // Spotify's album UID
-  name        String
-  url         String
-  image       String?
-  color       String?
-  releaseDate DateTime? @db.Date
-
-  tracks Track[]
-}
-
-model Genre {
-  name String @id // Spotify's genre name as ID
-
-  artists Artist[]
+  @@index([createdTimestamp])
 }

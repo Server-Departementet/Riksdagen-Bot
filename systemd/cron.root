@@ -1,4 +1,7 @@
-# Installed as root's crontab (crontab systemd/cron.root) — reboot needs root.
+# Installed as root's crontab (crontab systemd/cron.root) — reboot and deploys need root.
+
+# Auto-deploy: exits quietly unless the tracked branch has new commits
+*/10 *  * * *   bash /home/riks/Riksdagen-Bot/systemd/update.sh >> /var/log/riksdagen-bot/update.log 2>&1
 
 # Weekly maintenance reboot
 25 4    * * 1   /sbin/reboot

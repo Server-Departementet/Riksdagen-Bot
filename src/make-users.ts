@@ -1,13 +1,10 @@
 import "dotenv/config";
 import { PrismaClient } from "@/lib/prisma/generated/client";
-import { PrismaClient as WebPrismaClient } from "@/lib/prisma-web/generated/client";
 import { Client as DiscordClient, GatewayIntentBits } from "discord.js";
 import { makeMariaDBAdapter } from "@/lib/prisma";
 
 if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL is not set in environment variables");
 const DATABASE_URL = process.env.DATABASE_URL;
-if (!process.env.WEB_DATABASE_URL) throw new Error("WEB_DATABASE_URL is not set in environment variables");
-const WEB_DATABASE_URL = process.env.WEB_DATABASE_URL;
 if (!process.env.DISCORD_BOT_TOKEN) throw new Error("DISCORD_BOT_TOKEN is not set in environment variables");
 const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
 if (!process.env.REGERINGEN_GUILD_ID) throw new Error("REGERINGEN_GUILD_ID is not set in environment variables");
@@ -28,7 +25,6 @@ makeUsers()
 
 async function makeUsers() {
   const prisma = new PrismaClient(makeMariaDBAdapter(DATABASE_URL));
-  const webPrisma = new WebPrismaClient(makeMariaDBAdapter(WEB_DATABASE_URL));
 
   /*
    * Get users' nicknames on Discord via the bot
@@ -67,8 +63,8 @@ async function makeUsers() {
     });
   });
 
-  // The User tables double as the minister allowlist: the web app grants the
-  // `minister` role at login iff the Discord ID exists in its User table.
+  // The bot's own User table maps Discord IDs to names for quotes, quiz and stats.
+  // The web apps keep their own User tables in sync themselves (Riksdagen/scripts/make-users.ts).
   for (const discordId in serverNicks) {
     const user = {
       id: discordId,
@@ -79,13 +75,7 @@ async function makeUsers() {
       create: user,
       update: user,
     });
-    await webPrisma.user.upsert({
-      where: { id: discordId },
-      create: user,
-      update: user,
-    });
   }
 
   await prisma.$disconnect();
-  await webPrisma.$disconnect();
 }
