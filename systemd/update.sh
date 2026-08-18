@@ -7,7 +7,7 @@ set -e
 
 REPO=/home/riks/Riksdagen-Bot
 # The branch this deployment tracks: main on the prod bot, dev on the dev bot.
-BRANCH=main
+BRANCH=dev
 
 runuser -u riks -- git -C "$REPO" fetch origin
 if [ "${1:-}" != "--force" ] && [ "$(git -C "$REPO" rev-parse HEAD)" = "$(git -C "$REPO" rev-parse "origin/$BRANCH")" ]; then
