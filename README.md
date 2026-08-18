@@ -47,8 +47,8 @@ Deployment uses `systemd/` (a `discgolf` + `assets` service + `cron` for quotes/
 Everything runs as the unprivileged `riks` user with the repo at `/home/riks/Riksdagen-Bot`
 (nvm + node installed for that user); the maintenance reboot and the auto-deploy
 (`systemd/cron.root`) are root's. Cron logs go to `/var/log/riksdagen-bot/`.
-Deploys are automatic: root's cron runs `systemd/update.sh` every 10 minutes, which
-exits quietly unless the tracked branch (`BRANCH` in the script: main on prod, dev on
-the dev bot) has new commits, and otherwise reinstalls deps, regenerates Prisma
-clients, refreshes crontabs + services and restarts them. Run it with `--force` to
-redeploy by hand.
+Deploys are automatic: every push to main runs `.github/workflows/deploy.yml` on the
+self-hosted LAN runner (container riksdagen-ci), which installs deps, lints, tests,
+then SSHes to the bot VM and runs `systemd/update.sh --force` — that reinstalls deps,
+regenerates Prisma clients, refreshes crontabs + services and restarts them. Run the
+same script with `--force` as root on the VM to redeploy by hand.

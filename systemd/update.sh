@@ -1,8 +1,8 @@
 #!/bin/bash
 # Run as root: app steps run as the riks user, system steps as root.
-# Cron (systemd/cron.root) runs this every 10 minutes for automatic deploys:
-# it exits quietly unless origin/$BRANCH has new commits. Pass --force to
-# rebuild regardless.
+# The GitHub Actions deploy workflow runs this over SSH with --force on every
+# push to the tracked branch; without --force it exits quietly unless
+# origin/$BRANCH has new commits (handy for manual runs).
 set -e
 
 REPO=/home/riks/Riksdagen-Bot

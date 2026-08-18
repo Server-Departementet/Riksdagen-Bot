@@ -1,0 +1,46 @@
+# Test on the self-hosted LAN runner (container riksdagen-ci) and deploy main
+# to the bot VM by running its update script over SSH.
+# The target host lives in /home/runner/deploy-bot.env on the runner.
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy
+
+jobs:
+  test-and-deploy:
+    runs-on: self-hosted
+    env:
+      # prisma.config.ts refuses to load without it; nothing connects during CI
+      DATABASE_URL: "mysql://unused:unused@localhost:3306/unused"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
+
+      - name: Install dependencies
+        run: corepack enable && yarn install --immutable
+
+      - name: Generate Prisma clients
+        run: yarn generate
+
+      - name: Lint
+        # user-aliases.json is operator-provided (lives only on the bot VM);
+        # the type-checker just needs a file to resolve
+        run: |
+          echo '{"0": ["placeholder"]}' > user-aliases.json
+          yarn lint
+
+      - name: Test
+        run: yarn quotes-test && yarn discgolf-test
+
+      - name: Deploy
+        run: |
+          source /home/runner/deploy-bot.env
+          ssh "root@$BOT_HOST" bash /home/riks/Riksdagen-Bot/systemd/update.sh --force
