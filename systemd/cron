@@ -4,3 +4,4 @@
 18 2    * * *   /home/riks/Riksdagen-Bot/systemd/tsx-log.sh src/quotes/quotes.ts --fetch >> /var/log/riksdagen-bot/quotes.log 2>&1
 0 18    * * *   /home/riks/Riksdagen-Bot/systemd/tsx-log.sh src/quiz/quiz.ts >> /var/log/riksdagen-bot/quiz.log 2>&1
 7 3     * * *   /home/riks/Riksdagen-Bot/systemd/tsx-log.sh src/make-users.ts >> /var/log/riksdagen-bot/make-users.log 2>&1
+12 5    * * *   bash /home/riks/Riksdagen-Bot/systemd/sync-web-dbs.sh >> /var/log/riksdagen-bot/db-sync.log 2>&1
