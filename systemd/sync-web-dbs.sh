@@ -31,7 +31,10 @@ sync_direction() { # sync_direction "label" <from-url> <to-url>
   read -r TU TP TH TPORT TD <<< "$(parse_url "$3")"
 
   echo "Syncing $label..."
+  # riks_bot has plain DML only — the dump must not emit LOCK TABLES or
+  # ALTER TABLE ... DISABLE KEYS statements
   MYSQL_PWD="$FP" mariadb-dump --single-transaction --no-create-info --insert-ignore \
+    --skip-add-locks --skip-disable-keys \
     -h "$FH" -P "$FPORT" -u "$FU" "$FD" $TABLES \
     | MYSQL_PWD="$TP" mariadb -h "$TH" -P "$TPORT" -u "$TU" "$TD"
   echo "Synced $label."
