@@ -14,7 +14,8 @@
     "discgolf-test": "tsx --test src/discgolf/courses.test.ts src/discgolf/records.test.ts",
     "quotes-test": "tsx --test src/quotes/quote-utils.test.ts",
     "generate": "prisma generate && prisma generate --config prisma.web.config.ts",
-    "make-users": "tsx src/make-users.ts"
+    "make-users": "tsx src/make-users.ts",
+    "post-recent-plays": "tsx src/web/post-recent-plays.ts"
   },
   "license": "MIT",
   "private": true,
@@ -23,6 +24,7 @@
   "devDependencies": {
     "@types/express": "^5.0.6",
     "@types/node": "^26.2.0",
+    "@types/spotify-web-api-node": "^5.0.11",
     "eslint": "^10.8.1",
     "jiti": "^2.7.0",
     "prisma": "^7.9.1",
@@ -36,6 +38,7 @@
     "discord.js": "^14.27.0",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
+    "node-vibrant": "^4.0.4",
     "tsx": "^4.23.12"
   }
 }

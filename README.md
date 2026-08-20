@@ -4,13 +4,21 @@ The Discord bots for the Regeringen server (**quotes**/citat, **quiz**, **discgo
 and their cron jobs. The [Riksdagen](https://github.com/Server-Departementet/Riksdagen)
 web repo owns the web site and its own data jobs (minister sync, Spotify play import).
 
-This repo owns the **canonical quotes**: `src/quotes/quotes.ts` crawls the quote
-channel and upserts each quote into the bot's own MariaDB (`Quote` table), then
-injects a copy into every configured web database (`src/quotes/web-sync.ts`).
+This repo is the **data producer** for the web sites:
+- `src/quotes/quotes.ts` crawls the quote channel, upserts each quote into the
+  bot's own MariaDB (`Quote` table), then injects a copy into every configured
+  web database (`src/quotes/web-sync.ts`).
+- `src/web/post-recent-plays.ts` fetches each connected minister's recently
+  played Spotify tracks ONCE and writes plays + a per-user fetch log
+  (`TrackPlayFetch`, shown on the web app's `/spotify/log`) into every
+  configured web database. `SpotifyAccount` refresh tokens are read from and
+  rotated in the FIRST target (prod) only — where ministers connect — so the
+  environments can never invalidate each other's tokens.
+
 The **prod** bot deployment (main branch) sets `WEB_DATABASE_URL_PROD` and
 `WEB_DATABASE_URL_DEV` and feeds both web DBs over LAN; the **dev** bot
 deployment (dev branch) sets neither and never touches the web databases.
-`prisma/web.schema.prisma` is a minimal mirror of the web repo's `Quote` model —
+`prisma/web.schema.prisma` is a mirror of the web repo's schema —
 the web repo owns that schema and its migrations; keep the mirror in sync.
 
 ## Setup
@@ -33,6 +41,7 @@ the web repo owns that schema and its migrations; keep the mirror in sync.
 | Command | Purpose |
 | --- | --- |
 | `yarn make-users` | Upsert ministers into the bot's `User` table (names for quotes/quiz/stats) |
+| `yarn post-recent-plays` | Import connected ministers' recent Spotify plays into the web DBs |
 | `yarn generate` | Generate both Prisma clients |
 | `yarn tsx src/quotes/quotes.ts --fetch` | Crawl the quote channel, upsert quotes, inject into web DBs |
 | `yarn tsx src/quiz/quiz.ts` | Post the daily citat quiz (reads quotes from the DB) |

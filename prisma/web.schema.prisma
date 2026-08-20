@@ -1,8 +1,10 @@
-// Minimal mirror of the Riksdagen web app's Quote table.
-// The web repo owns that schema and its migrations (Riksdagen/prisma/schema.prisma);
-// keep this model in sync. The PROD bot deployment injects quotes into BOTH the
-// prod and dev web databases over LAN (see src/quotes/web-sync.ts); the dev bot
-// deployment configures no web databases and injects nothing.
+// Mirror of the Riksdagen web app's database.
+// The web repo owns this schema and its migrations (Riksdagen/prisma/schema.prisma);
+// keep this file in sync. The PROD bot deployment injects into BOTH the prod and
+// dev web databases over LAN (quotes via src/quotes/web-sync.ts, Spotify plays +
+// fetch log via src/web/post-recent-plays.ts); the dev bot deployment configures
+// no web databases and injects nothing. SpotifyAccount is read (and rotated
+// tokens written) in the prod database only — that is where ministers connect.
 generator client {
   provider = "prisma-client"
   moduleFormat = "esm"
@@ -11,6 +13,98 @@ generator client {
 
 datasource db {
   provider = "mysql"
+}
+
+model User {
+  id   String  @id // Discord ID
+  name String?
+
+  trackPlays       TrackPlay[]
+  spotifyAccount   SpotifyAccount?
+  trackPlayFetches TrackPlayFetch[]
+}
+
+// Spotify OAuth refresh tokens, written by the web app's /api/auth/callback/spotify
+// and consumed by src/web/post-recent-plays.ts
+model SpotifyAccount {
+  userId String @id
+  user   User   @relation(fields: [userId], references: [id])
+
+  refreshToken String   @db.Text
+  scope        String?
+  connectedAt  DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model TrackPlay {
+  playedAt DateTime
+  imported Boolean  @default(false) // Play came from a takeout history import, not the recently-played job
+
+  user    User   @relation(fields: [userId], references: [id])
+  userId  String
+  track   Track  @relation(fields: [trackId], references: [id])
+  trackId String
+
+  @@id([trackId, playedAt, userId])
+  @@index([playedAt])
+}
+
+// One row per minister per recently-played fetch, pruned after 30 days.
+// The web app's /spotify/log shows the latest runs.
+model TrackPlayFetch {
+  id    Int      @id @default(autoincrement())
+  runAt DateTime // Shared by every row of one script run
+
+  user   User   @relation(fields: [userId], references: [id])
+  userId String
+
+  status   String // ok | token-failed | fetch-failed | write-failed
+  inserted Int     @default(0)
+  skipped  Int     @default(0) // Plays already in the database
+  detail   String? @db.Text
+
+  @@index([runAt])
+}
+
+model Track {
+  id       String @id // Spotify's track UID
+  ISRC     String
+  url      String
+  name     String
+  duration Int // Milliseconds
+
+  album      Album       @relation(fields: [albumId], references: [id])
+  albumId    String
+  artists    Artist[]
+  TrackPlays TrackPlay[]
+}
+
+model Artist {
+  id    String  @id // Spotify's artist UID
+  name  String
+  url   String
+  image String?
+  color String?
+
+  tracks Track[]
+  genres Genre[]
+}
+
+model Album {
+  id          String    @id // Spotify's album UID
+  name        String
+  url         String
+  image       String?
+  color       String?
+  releaseDate DateTime? @db.Date
+
+  tracks Track[]
+}
+
+model Genre {
+  name String @id // Spotify's genre name as ID
+
+  artists Artist[]
 }
 
 model Quote {

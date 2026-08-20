@@ -1,5 +1,6 @@
 # Installed as the riks user's crontab (crontab -u riks systemd/cron).
-# The maintenance reboot and the auto-deploy live in systemd/cron.root.
+# The maintenance reboot lives in systemd/cron.root.
+*/15 *  * * *   /home/riks/Riksdagen-Bot/systemd/tsx-log.sh src/web/post-recent-plays.ts >> /var/log/riksdagen-bot/recent-plays.log 2>&1
 18 2    * * *   /home/riks/Riksdagen-Bot/systemd/tsx-log.sh src/quotes/quotes.ts --fetch >> /var/log/riksdagen-bot/quotes.log 2>&1
 0 18    * * *   /home/riks/Riksdagen-Bot/systemd/tsx-log.sh src/quiz/quiz.ts >> /var/log/riksdagen-bot/quiz.log 2>&1
 7 3     * * *   /home/riks/Riksdagen-Bot/systemd/tsx-log.sh src/make-users.ts >> /var/log/riksdagen-bot/make-users.log 2>&1
