@@ -7,6 +7,7 @@ import { buildScoreTable, courseNameFrom, courseTotal, findCourse, formatRelativ
 import type { CourseRecords, RecordEntry } from "./records";
 import { applyRoundResults, formatCourseSection, formatRecordsHeader, parseRecords } from "./records";
 import { registerMonitor } from "../monitor/monitor";
+import { registerWinroth } from "../reactions/winroth";
 
 // Logger utility
 function log(level: "INFO" | "WARN" | "ERROR", message: string, data?: Record<string, unknown>) {
@@ -54,6 +55,8 @@ const discordClient = new DiscordClient({
     GatewayIntentBits.GuildMembers,
     GatewayIntentBits.MessageContent,
     GatewayIntentBits.GuildMessages,
+    // Keeps the custom-emoji cache current for the :winroth: reaction
+    GatewayIntentBits.GuildEmojisAndStickers,
   ],
   // Without the Message partial, edits to uncached messages (e.g. a course name
   // edited into an old score message after a restart) emit no MessageUpdate event
@@ -63,6 +66,8 @@ const discordClient = new DiscordClient({
 // Edit/delete logging for the monitored guild rides on this client - the only
 // persistent gateway connection (quiz and quotes run as cron one-shots)
 registerMonitor(discordClient);
+// Same client, same reason: the occasional :winroth: reaction in every guild
+registerWinroth(discordClient);
 
 const commands = [
   new SlashCommandBuilder()

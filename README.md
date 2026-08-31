@@ -1,7 +1,9 @@
 # Riksdagen-Bot
 
 The Discord bots for the Regeringen server (**quotes**/citat, **quiz**, **discgolf**)
-and their cron jobs. The [Riksdagen](https://github.com/Server-Departementet/Riksdagen)
+and their cron jobs. The discgolf process is the only persistent gateway connection, so it
+also hosts the edit/delete **monitor** (`src/monitor/`) and the `:winroth:` easter egg
+(`src/reactions/winroth.ts`: a 1% chance to react to `WINROTH_USER_ID`'s messages, in every guild). The [Riksdagen](https://github.com/Server-Departementet/Riksdagen)
 web repo owns the web site and its own data jobs (minister sync, Spotify play import).
 
 This repo is the **data producer** for the web sites:
@@ -30,6 +32,7 @@ the web repo owns that schema and its migrations; keep the mirror in sync.
    - `REGERINGEN_GUILD_ID`, `QUOTE_CHANNEL_ID`, `QUIZ_CHANNEL_ID`, `CANONICAL_URL`
    - `DISCGOLF_GUILD_ID`, `DISCGOLF_READ_CHANNEL_ID`, `DISCGOLF_WRITE_CHANNEL_ID`
    - `WEB_DATABASE_URL_PROD`, `WEB_DATABASE_URL_DEV` — prod deployment only
+   - `WINROTH_USER_ID` — optional, enables the `:winroth:` reaction
 3. Provide `user-aliases.json` in the repo root — a `{ "<discordId>": ["Name", ...] }`
    map used to resolve quotees to user IDs. Not committed (operator-provided).
 4. `yarn prisma migrate deploy` (or `yarn prisma migrate dev` locally) to create the tables.
