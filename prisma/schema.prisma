@@ -25,8 +25,12 @@ model Quote {
   quotee String
 
   quoteeId    String?
+  // Canonical key for quotees who are not ministers (see quotee-aliases.json);
+  // groups spelling variants so the quiz and stats can treat them as one person
+  quoteeKey   String?
   context     String? @db.Text
   attachments Json?
 
   @@index([createdTimestamp])
+  @@index([quoteeKey])
 }

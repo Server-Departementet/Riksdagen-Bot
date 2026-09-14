@@ -49,6 +49,7 @@ next-env.d.ts
 
 # operator-provided data
 /user-aliases.json
+/quotee-aliases.json
 
 # generated / runtime data
 /src/quotes/cache

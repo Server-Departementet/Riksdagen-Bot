@@ -35,6 +35,10 @@ the web repo owns that schema and its migrations; keep the mirror in sync.
    - `WINROTH_USER_ID` — optional, enables the `:winroth:` reaction
 3. Provide `user-aliases.json` in the repo root — a `{ "<discordId>": ["Name", ...] }`
    map used to resolve quotees to user IDs. Not committed (operator-provided).
+   Optionally also `quotee-aliases.json` (see [`quotee-aliases.example.json`](quotee-aliases.example.json)):
+   a `{ "<key>": ["Spelling", ...] }` map that groups spelling variants of
+   non-minister quotees under one `Quote.quoteeKey`. Quotees not listed get their
+   lowercased name as key, so the file is only needed to merge variants.
 4. `yarn prisma migrate deploy` (or `yarn prisma migrate dev` locally) to create the tables.
 5. `yarn generate` to generate both Prisma clients (own DB + web Quote mirror).
 6. Populate the `User` table (Discord-ID → name): `yarn make-users`
@@ -48,8 +52,20 @@ the web repo owns that schema and its migrations; keep the mirror in sync.
 | `yarn generate` | Generate both Prisma clients |
 | `yarn tsx src/quotes/quotes.ts --fetch` | Crawl the quote channel, upsert quotes, inject into web DBs |
 | `yarn tsx src/quiz/quiz.ts` | Post the daily citat quiz (reads quotes from the DB) |
+| `yarn tsx src/quiz/quiz.ts --dry-run [--external\|--minister\|--id <quoteId>]` | Print the quiz that would be posted without touching Discord |
 | `yarn tsx src/discgolf/discgolf.ts` | Run the discgolf bot |
 | `yarn lint` | Type-check + ESLint |
+
+### Quiz rounds
+
+Every quote is either about a **minister** (`Quote.quoteeId`, resolved via `user-aliases.json`)
+or about an **external** person (`Quote.quoteeKey`). A round is about an external with
+probability `externalRoundWeight` (`src/quiz/quiz-selection.ts`, default 30%), and only
+externals with at least `externalMinQuotes` (3) quotes are eligible. Minister rounds list
+every minister as poll options; external rounds list the right name, a few other externals
+weighted by how often they are quoted, and ministers up to Discord's 10-answer cap. The
+"skrevs av" hint is dropped in external rounds when it would give the answer away (only
+one person ever quotes them, or the quotee is named after the sender).
 
 The quotes crawler downloads attachment images into `public/quote-attachments/`;
 `systemd/assets.service` (src/assets/server.ts, port `ASSETS_PORT`, default 3100) serves
