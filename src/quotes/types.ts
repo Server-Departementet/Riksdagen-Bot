@@ -20,6 +20,7 @@ export type Quote = {
   quotee: string;
 
   quoteeId?: string;
+  quoteeKey?: string;
   context?: string;
   attachments?: string[];
 };

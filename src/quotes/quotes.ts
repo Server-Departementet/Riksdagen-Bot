@@ -6,7 +6,7 @@ import fs from "node:fs";
 import { PrismaClient } from "@/lib/prisma/generated/client";
 import aliases from "../../user-aliases.json" with { type: "json" };
 import { makeMariaDBAdapter } from "@/lib/prisma";
-import { isMultiSpeakerQuote, quoteAttributionSplitRegex, splitCustomQuoteMeta, stripCustomQuoteMeta, wordMatchRegex } from "./quote-utils";
+import { isMultiSpeakerQuote, quoteAttributionSplitRegex, resolveQuoteeKey, splitCustomQuoteMeta, stripCustomQuoteMeta, wordMatchRegex } from "./quote-utils";
 import { Client as DiscordClient, GatewayIntentBits } from "discord.js";
 import { attachmentDir, getAttachmentPath } from "./types";
 import { toQuoteData } from "./quote-db";
@@ -16,6 +16,14 @@ const nameVariants: Record<string, string[]> = aliases;
 if (Object.keys(nameVariants).length === 0) {
   throw new Error("No name variants found in aliases file");
 }
+
+// Optional operator file grouping spelling variants of non-minister quotees under one
+// key (see quotee-aliases.example.json). Quotees not listed get their own slug as key.
+const quoteeAliasesPath = "quotee-aliases.json";
+const quoteeAliases: Record<string, string[]> = fs.existsSync(quoteeAliasesPath)
+  ? JSON.parse(fs.readFileSync(quoteeAliasesPath, "utf-8")) as Record<string, string[]>
+  : {};
+console.info(`Loaded ${Object.keys(quoteeAliases).length} quotee alias groups.`);
 
 if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL is not set in environment variables");
 const DATABASE_URL = process.env.DATABASE_URL;
@@ -223,6 +231,7 @@ function extractContext(quote: TrimmedMessage): Quote | null {
   }
 
   // Quotee normalization
+  const senderVariants = (nameVariants[resolvedAuthorId] ?? []).map(v => v.toLowerCase());
   const aliases: Record<string, string> = {
     "Viggo": "Vena",
     "viggo": "vena",
@@ -232,7 +241,8 @@ function extractContext(quote: TrimmedMessage): Quote | null {
     "Viggos mamma": "Venas mamma",
     "Viggos pappa": "Venas pappa",
     "Jesper": "Jesper (TE4 individ)",
-    ...sender.name.toLowerCase() === "agnes" ? { "min föreläsare": "Agnes föreläsare" } : {},
+    // Matched on the alias file rather than the User row, whose name is the Discord nick
+    ...senderVariants.includes("agnes") ? { "min föreläsare": "Agnes föreläsare" } : {},
   };
 
   // Apply aliases to quotee, body, and context
@@ -253,6 +263,9 @@ function extractContext(quote: TrimmedMessage): Quote | null {
   const quoteeId = Object.entries(nameVariants).find(([, variants]) =>
     variants.map(v => v.toLowerCase()).includes(quotee.toLowerCase()),
   )?.[0];
+  // Ministers are identified by quoteeId; everyone else gets a quoteeKey so the quiz
+  // and stats can group their quotes
+  const quoteeKey = quoteeId ? undefined : resolveQuoteeKey(quotee, quoteeAliases);
 
   return {
     id: quote.id,
@@ -264,6 +277,7 @@ function extractContext(quote: TrimmedMessage): Quote | null {
     body,
     quotee,
     ...(quoteeId ? { quoteeId } : {}),
+    ...(quoteeKey ? { quoteeKey } : {}),
     ...(context ? { context: context.trim() } : {}),
     ...(quote.attachmentUrls ? {
       attachments: quote.attachmentUrls.map(a => getAttachmentPath(quote, a)),

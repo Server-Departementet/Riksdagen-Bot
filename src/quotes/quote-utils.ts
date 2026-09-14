@@ -98,3 +98,24 @@ export function isMultiSpeakerQuote(content: string): boolean {
     && content.split("\n").every(line => line.trim().startsWith("\"") && line.trim().includes("-"));
   return isMultiLine;
 }
+/**
+ * Canonical key for a quotee's display name: lowercased with whitespace collapsed,
+ * so "Venas Mamma" and "venas mamma" share a key. Swedish letters are kept as-is.
+ */
+export function slugifyQuotee(quotee: string): string {
+  return quotee.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+/**
+ * Resolve a quotee to a stable key. `quoteeAliases` maps a key to the spellings that
+ * belong to it (`{ "kasper": ["Kasper", "Kasper N"] }`); a quotee matching none of
+ * them gets its own slug so every quotee has a key.
+ */
+export function resolveQuoteeKey(quotee: string, quoteeAliases: Record<string, string[]>): string {
+  const wanted = slugifyQuotee(quotee);
+  for (const [key, variants] of Object.entries(quoteeAliases)) {
+    if (slugifyQuotee(key) === wanted) return key;
+    if (variants.some(v => slugifyQuotee(v) === wanted)) return key;
+  }
+  return wanted;
+}

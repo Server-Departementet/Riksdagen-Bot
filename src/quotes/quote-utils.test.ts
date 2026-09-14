@@ -3,6 +3,7 @@ import { test } from "node:test";
 import {
   getTimestampFromDiscordLink,
   quoteAttributionSplitRegex,
+  resolveQuoteeKey,
   splitCustomQuoteMeta,
   stripCustomQuoteMeta,
   wordMatchRegex,
@@ -80,4 +81,15 @@ await test("getTimestampFromDiscordLink derives timestamp from snowflake", () =>
   const link = "https://discord.com/channels/1/2/175928847299117063";
   const expected = Number((BigInt("175928847299117063") >> 22n) + 1420070400000n);
   assert.equal(getTimestampFromDiscordLink(link), expected);
+});
+
+await test("resolveQuoteeKey groups alias spellings and slugs the rest", () => {
+  const aliases = { "kasper": ["Kasper", "Kasper N"], "venas mamma": ["Venas mor"] };
+
+  assert.equal(resolveQuoteeKey("Kasper N", aliases), "kasper");
+  assert.equal(resolveQuoteeKey("KASPER", aliases), "kasper");
+  assert.equal(resolveQuoteeKey("Venas  Mor", aliases), "venas mamma");
+  assert.equal(resolveQuoteeKey("Venas mamma", aliases), "venas mamma");
+  assert.equal(resolveQuoteeKey("Ulf ", aliases), "ulf");
+  assert.equal(resolveQuoteeKey("Google assistent", {}), "google assistent");
 });

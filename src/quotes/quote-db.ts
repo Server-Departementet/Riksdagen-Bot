@@ -14,6 +14,7 @@ export function fromQuoteRow(row: QuoteRow): Quote {
     body: row.body,
     quotee: row.quotee,
     quoteeId: row.quoteeId ?? undefined,
+    quoteeKey: row.quoteeKey ?? undefined,
     context: row.context ?? undefined,
     attachments: (row.attachments as string[] | null) ?? undefined,
   };
@@ -31,6 +32,7 @@ export function toQuoteData(quote: Quote): Prisma.QuoteUncheckedCreateInput {
     body: quote.body,
     quotee: quote.quotee,
     quoteeId: quote.quoteeId ?? null,
+    quoteeKey: quote.quoteeKey ?? null,
     context: quote.context ?? null,
     attachments: quote.attachments ?? Prisma.JsonNull,
   };

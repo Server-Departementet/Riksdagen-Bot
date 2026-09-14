@@ -8,6 +8,18 @@ import { ggSansWidths } from "./gg-sans-widths";
 import { makeMariaDBAdapter } from "@/lib/prisma";
 import { isMultiSpeakerQuote } from "../quotes/quote-utils";
 import { fromQuoteRow } from "../quotes/quote-db";
+import aliases from "../../user-aliases.json" with { type: "json" };
+import type { QuizRoundKind } from "./quiz-selection";
+import {
+  buildPollAnswers,
+  collectExternalQuotees,
+  findCorrectAnswer,
+  pickQuizQuote,
+  roundKindFor,
+  shouldHideSenderHint,
+} from "./quiz-selection";
+
+const nameVariants: Record<string, string[]> = aliases;
 
 if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL is not set in environment variables");
 const DATABASE_URL = process.env.DATABASE_URL;
@@ -35,6 +47,10 @@ const forcedQuoteId = (() => {
 
   return idValue;
 })();
+// --external / --minister force the round kind (handy with --dry-run)
+const forcedKind: QuizRoundKind | undefined = process.argv.includes("--external")
+  ? "external"
+  : process.argv.includes("--minister") ? "minister" : undefined;
 let pollCleanupPromise: Promise<void> | null = null;
 
 const discordClient = new DiscordClient({
@@ -81,10 +97,12 @@ async function main() {
   if (!fs.existsSync(usedQuotesPath)) fs.writeFileSync(usedQuotesPath, "[]", "utf-8");
   const usedQuotes: string[] = JSON.parse(fs.readFileSync(usedQuotesPath, "utf-8")) as string[];
 
-  const availableQuotes = (await prisma.quote.findMany()).map(fromQuoteRow)
-    .filter(q => q.quoteeId);
-  const allQuotes = [...availableQuotes];
-  console.info(`Loaded ${availableQuotes.length} available quotes for quiz`);
+  const allQuotes = (await prisma.quote.findMany()).map(fromQuoteRow);
+  // Recurring non-minister quotees, counted over the whole corpus so the threshold
+  // doesn't drift as quotes get used up
+  const externals = collectExternalQuotees(allQuotes);
+  const availableQuotes = allQuotes.filter(q => roundKindFor(q, externals) !== null);
+  console.info(`Loaded ${availableQuotes.length} quizzable quotes (${allQuotes.length} total, ${externals.size} external quotees)`);
 
   let quizNumber = 0;
   const latestMessages = await channel.messages.fetch({ limit: 100 });
@@ -102,13 +120,15 @@ async function main() {
 
     // Quote Id is embedded in the quiz question content
     const previousQuoteId = /id: (\d+)/.exec(lastQuiz.content)?.[1];
-    const previousQuote = availableQuotes.find(q => q.id === previousQuoteId);
+    const previousQuote = allQuotes.find(q => q.id === previousQuoteId);
     if (!previousQuote) {
       throw new Error("Could not find previous quote for quiz results");
     }
 
     // End previous poll early if still running
-    pollCleanupPromise = endPreviousPoll(lastQuiz, channel);
+    if (!isDryRun) {
+      pollCleanupPromise = endPreviousPoll(lastQuiz, channel);
+    }
 
     /*
      * Compile and send quiz results
@@ -117,13 +137,7 @@ async function main() {
       console.info("No poll found on last quiz message, skipping results compilation");
       return;
     }
-    const previousQuoteeID = previousQuote.quoteeId;
-    if (!previousQuoteeID) {
-      console.info("Previous quote has no quoteeId, skipping results compilation");
-      return;
-    }
-    const answers = lastQuiz.poll.answers;
-    const correctAnswer = answers.find(answer => answer.text === users[previousQuoteeID]?.name);
+    const correctAnswer = findCorrectAnswer(previousQuote, lastQuiz.poll.answers.values(), externals, users);
     if (!correctAnswer) {
       console.info("Could not find correct answer among poll answers, skipping results compilation");
       return;
@@ -152,7 +166,12 @@ async function main() {
         .filter(line => !line.includes("{{originalLink}}"))
         .join("\n");
     }
-    await channel.send(resultContent);
+    if (isDryRun) {
+      console.info("Dry run, would have posted results:\n" + resultContent);
+    }
+    else {
+      await channel.send(resultContent);
+    }
     quizNumber += 1;
 
 
@@ -302,32 +321,36 @@ async function main() {
    * Select quote for new quiz 
    */
   let quote: Quote;
+  let kind: QuizRoundKind;
   if (forcedQuoteId) {
     const forcedQuote = allQuotes.find(q => q.id === forcedQuoteId);
     if (!forcedQuote) {
       throw new Error(`Could not find quote with ID ${forcedQuoteId}`);
     }
-    quote = forcedQuote;
+    const forcedQuoteKind = roundKindFor(forcedQuote, externals);
+    if (!forcedQuoteKind) {
+      throw new Error(`Quote ${forcedQuoteId} is about "${forcedQuote.quotee}", who is neither a minister nor a recurring quotee`);
+    }
+    [quote, kind] = [forcedQuote, forcedQuoteKind];
     console.info(`Forcing quote ID ${forcedQuoteId} via --id override`);
   }
   else {
-    const allQuotees = [...new Set(availableQuotes.map(q => q.quoteeId))];
-    const randomQuotee = allQuotees[Math.floor(Math.random() * allQuotees.length)];
-    const quotesSelection = availableQuotes.filter(q => q.quoteeId === randomQuotee);
-    const newQuote = quotesSelection[Math.floor(Math.random() * quotesSelection.length)];
-    if (!newQuote) {
-      throw new Error("Unexpected error selecting quote for quiz");
+    const picked = pickQuizQuote(availableQuotes, externals, { forceKind: forcedKind });
+    if (!picked) {
+      throw new Error(`No ${forcedKind ?? ""} quotes left to select from`.replace("  ", " "));
     }
-    quote = newQuote;
+    ({ quote, kind } = picked);
   }
 
   // Save quote id to file to avoid repeating quotes
-  if (!usedQuotes.includes(quote.id)) {
-    usedQuotes.push(quote.id);
+  if (!isDryRun) {
+    if (!usedQuotes.includes(quote.id)) {
+      usedQuotes.push(quote.id);
+    }
+    fs.writeFileSync(usedQuotesPath, JSON.stringify(usedQuotes, null, 2), "utf-8");
   }
-  fs.writeFileSync(usedQuotesPath, JSON.stringify(usedQuotes, null, 2), "utf-8");
 
-  console.info(`Selected quote ID ${quote.id} for Quiz #${quizNumber}`);
+  console.info(`Selected quote ID ${quote.id} for Quiz #${quizNumber} (${kind} round)`);
   console.info(quote);
 
   /*
@@ -364,6 +387,10 @@ async function main() {
   const bestCandidate = paddingCandidates[0];
 
   const isMultiSpeaker = isMultiSpeakerQuote(quote.body);
+  const hideSender = shouldHideSenderHint(kind, quote, externals, nameVariants[quote.authorId] ?? []);
+  if (hideSender) {
+    console.info("Hiding the sender hint: it would give the quotee away");
+  }
 
   const quizData = {
     "quizNumber": quizNumber,
@@ -380,7 +407,9 @@ async function main() {
       : {},
     "date": `datum\t\t\t\t || *${formattedDate}* ${bestCandidate?.datePad.pad}||`,
     "time": `tid\t\t\t\t\t\t || *${formattedTime}* ${bestCandidate?.timePad.pad}||`,
-    "sender": `skrevs av\t\t\t|| *${quote.sender || "Okänt"}* ${bestCandidate?.senderPad.pad}||`,
+    ...hideSender
+      ? {}
+      : { "sender": `skrevs av\t\t\t|| *${quote.sender || "Okänt"}* ${bestCandidate?.senderPad.pad}||` },
     "quoteId": quote.id,
   };
 
@@ -390,15 +419,11 @@ async function main() {
     quizContent = quizContent.replace(regex, value.toString());
   }
 
-  // Remove lines with unknown placeholders
-  if (!quote.context) {
-    quizContent = quizContent
-      .split("\n")
-      .filter(line =>
-        (!line.includes("{{context}}") || quote.context?.length),
-      )
-      .join("\n");
-  }
+  // Remove lines whose placeholder had nothing to fill it (no context / hidden sender)
+  quizContent = quizContent
+    .split("\n")
+    .filter(line => !line.includes("{{context}}") && !line.includes("{{sender}}"))
+    .join("\n");
 
   // If no hints (date, time, sender) persist, remove the "Ledtrådar" header as well
   if (!quote.context) {
@@ -417,18 +442,20 @@ async function main() {
     layoutType: PollLayoutType.Default,
     question: { text: `Citat Quiz #${quizNumber}` },
     allowMultiselect: false,
-    answers: Object.values(users)
-      .map(u => u.name ?? "FEL")
-      .sort()
-      .map(name => ({ text: name })),
+    answers: buildPollAnswers(kind, quote, externals, users).map(text => ({ text })),
   };
 
-  if (!isDryRun)
+  if (isDryRun) {
+    console.info("Dry run, would have posted:\n" + quizContent);
+    console.info("Poll answers:", pollPayload.answers.map(a => a.text));
+  }
+  else {
     await channel.send({
       content: quizContent,
       ...(embeds ? { embeds } : {}),
       poll: pollPayload,
     });
+  }
 }
 
 function endPreviousPoll(pollMessage: Message, channel: Channel): Promise<void> {

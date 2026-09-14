@@ -42,7 +42,7 @@ jobs:
           yarn lint
 
       - name: Test
-        run: yarn quotes-test && yarn discgolf-test
+        run: yarn quotes-test && yarn quiz-test && yarn discgolf-test
 
       - name: Deploy
         run: |
