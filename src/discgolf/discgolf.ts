@@ -7,6 +7,7 @@ import { buildScoreTable, courseNameFrom, courseTotal, findCourse, formatRelativ
 import type { CourseRecords, RecordEntry } from "./records";
 import { applyRoundResults, formatCourseSection, formatRecordsHeader, parseRecords } from "./records";
 import { registerMonitor } from "../monitor/monitor";
+import { registerGhostTyping } from "../reactions/ghost-typing";
 import { registerWinroth } from "../reactions/winroth";
 
 // Logger utility
@@ -68,6 +69,8 @@ const discordClient = new DiscordClient({
 registerMonitor(discordClient);
 // Same client, same reason: the occasional :winroth: reaction in every guild
 registerWinroth(discordClient);
+// ...and the rare five-minute typing indicator that never becomes a message
+registerGhostTyping(discordClient);
 
 const commands = [
   new SlashCommandBuilder()

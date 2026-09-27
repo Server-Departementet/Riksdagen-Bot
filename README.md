@@ -2,8 +2,9 @@
 
 The Discord bots for the Regeringen server (**quotes**/citat, **quiz**, **discgolf**)
 and their cron jobs. The discgolf process is the only persistent gateway connection, so it
-also hosts the edit/delete **monitor** (`src/monitor/`) and the `:winroth:` easter egg
-(`src/reactions/winroth.ts`: a 1% chance to react to `WINROTH_USER_ID`'s messages, in every guild). The [Riksdagen](https://github.com/Server-Departementet/Riksdagen)
+also hosts the edit/delete **monitor** (`src/monitor/`) and the easter eggs (`src/reactions/`):
+a 1% chance to react `:winroth:` to `WINROTH_USER_ID`'s messages, and a 0.5% chance per message
+to "type" in that channel for ~5 minutes without ever sending - both in every guild. The [Riksdagen](https://github.com/Server-Departementet/Riksdagen)
 web repo owns the web site and its own data jobs (minister sync, Spotify play import).
 
 This repo is the **data producer** for the web sites:
