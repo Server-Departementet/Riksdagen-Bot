@@ -8,6 +8,7 @@ import type { CourseRecords, RecordEntry } from "./records";
 import { applyRoundResults, formatCourseSection, formatRecordsHeader, parseRecords } from "./records";
 import { registerMonitor } from "../monitor/monitor";
 import { registerGhostTyping } from "../reactions/ghost-typing";
+import { registerScissors } from "../reactions/scissors";
 import { registerWinroth } from "../reactions/winroth";
 
 // Logger utility
@@ -58,10 +59,12 @@ const discordClient = new DiscordClient({
     GatewayIntentBits.GuildMessages,
     // Keeps the custom-emoji cache current for the :winroth: reaction
     GatewayIntentBits.GuildEmojisAndStickers,
+    // For the ✂️ mirror (src/reactions/scissors.ts)
+    GatewayIntentBits.GuildMessageReactions,
   ],
   // Without the Message partial, edits to uncached messages (e.g. a course name
   // edited into an old score message after a restart) emit no MessageUpdate event
-  partials: [Partials.Message],
+  partials: [Partials.Message, Partials.Reaction],
 });
 
 // Edit/delete logging for the monitored guild rides on this client - the only
@@ -71,6 +74,8 @@ registerMonitor(discordClient);
 registerWinroth(discordClient);
 // ...and the rare five-minute typing indicator that never becomes a message
 registerGhostTyping(discordClient);
+// ...and the bot joining in on ✂️ reactions to Winroth's messages
+registerScissors(discordClient);
 
 const commands = [
   new SlashCommandBuilder()
