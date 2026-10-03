@@ -240,7 +240,10 @@ function extractContext(quote: TrimmedMessage): Quote | null {
     "Viggos mor": "Venas mamma",
     "Viggos mamma": "Venas mamma",
     "Viggos pappa": "Venas pappa",
-    "Jesper": "Jesper (TE4 individ)",
+    "Luna": "Lily",
+    "luna": "lily",
+    "Lunas": "Lilys",
+    "lunas": "lilys",
     // Matched on the alias file rather than the User row, whose name is the Discord nick
     ...senderVariants.includes("agnes") ? { "min föreläsare": "Agnes föreläsare" } : {},
   };
