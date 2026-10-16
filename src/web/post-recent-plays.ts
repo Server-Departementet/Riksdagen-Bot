@@ -5,6 +5,7 @@ import { PrismaClient } from "@/lib/prisma-web/generated/client";
 import { makeMariaDBAdapter } from "@/lib/prisma";
 import { webTargets } from "@/lib/web-targets";
 import { refreshSpotifyAccessToken } from "./spotify-auth";
+import { notifyBrokenSpotifyLinks } from "./notify-broken-spotify";
 import type SpotifyApi from "spotify-web-api-node";
 import type { UsersRecentlyPlayedTracksResponse } from "./types/spotify";
 
@@ -40,6 +41,8 @@ async function addRecentTrackPlays() {
     prisma: new PrismaClient(makeMariaDBAdapter(target.url)),
   }));
   const source = targets[0] as Target; // Prod when configured; token source of truth
+  // Users whose refresh token Spotify rejected this run - pinged in the music channel afterwards
+  const brokenLinkUserIds: string[] = [];
 
   // Every user's outcome this run is recorded under one timestamp
   const runAt = new Date();
@@ -72,6 +75,7 @@ async function addRecentTrackPlays() {
       if (!refreshed) {
         console.warn(`Could not refresh Spotify token for user: ${username}. They may need to reconnect at /spotify.`);
         await logFetchAll(dbUser.id, "token-failed", 0, 0, "Koppla om ditt Spotify-konto på /spotify");
+        brokenLinkUserIds.push(dbUser.id);
         continue;
       }
       if (refreshed.newRefreshToken) {
@@ -206,7 +210,13 @@ async function addRecentTrackPlays() {
     }
   }
 
-  return;
+  // The import is done at this point - a Discord hiccup must not fail the run
+  try {
+    await notifyBrokenSpotifyLinks(brokenLinkUserIds);
+  }
+  catch (err) {
+    console.error("Error pinging users about broken Spotify links:", err);
+  }
 }
 
 type RecentTrack = UsersRecentlyPlayedTracksResponse["items"][number]["track"];

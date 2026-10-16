@@ -35,6 +35,7 @@ the web repo owns that schema and its migrations; keep the mirror in sync.
    - `DISCGOLF_GUILD_ID`, `DISCGOLF_READ_CHANNEL_ID`, `DISCGOLF_WRITE_CHANNEL_ID`
    - `WEB_DATABASE_URL_PROD`, `WEB_DATABASE_URL_DEV` — prod deployment only
    - `WINROTH_USER_ID` — optional, enables the `:winroth:` reaction
+   - `MUSIC_CHANNEL_ID` — optional, where `post-recent-plays` pings ministers whose Spotify link broke
 3. Provide `user-aliases.json` in the repo root — a `{ "<discordId>": ["Name", ...] }`
    map used to resolve quotees to user IDs. Not committed (operator-provided).
    Optionally also `quotee-aliases.json` (see [`quotee-aliases.example.json`](quotee-aliases.example.json)):
