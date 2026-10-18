@@ -29,10 +29,12 @@ runuser -u riks -- env BRANCH="$BRANCH" bash -c '
   chmod +x systemd/*.sh
 
   yarn install --immutable
-  # Regenerate both Prisma clients (own DB + web Quote mirror).
-  # Schema *changes* to the own DB are applied manually (yarn prisma db push);
-  # the web DBs are migrated by the web repo, never from here.
+  # Regenerate both Prisma clients (own DB + web DB mirror).
   yarn generate
+  # Apply schema changes to the own DB. Without --accept-data-loss, db push
+  # refuses destructive changes, failing the deploy so they get handled by hand.
+  # The web DBs are migrated by the web repo, never from here.
+  yarn prisma db push
 '
 
 # Log dir for the cron jobs (riks writes the logs)

@@ -1,7 +1,7 @@
 generator client {
-  provider = "prisma-client"
+  provider     = "prisma-client"
   moduleFormat = "esm"
-  output   = "../src/lib/prisma/generated"
+  output       = "../src/lib/prisma/generated"
 }
 
 datasource db {
@@ -14,7 +14,7 @@ model User {
 }
 
 model Quote {
-  id               String   @id // Discord message ID
+  id               String  @id // Discord message ID
   authorId         String
   createdTimestamp BigInt // ms epoch
   link             String
@@ -33,4 +33,36 @@ model Quote {
 
   @@index([createdTimestamp])
   @@index([quoteeKey])
+}
+
+// One row per "Citat Quiz #N" poll. The bot DB is canonical; src/quiz/backfill.ts
+// can rebuild every row from the quiz channel if it is ever lost. The quiz picks
+// unused quotes by excluding every quoteId in here.
+model QuizRound {
+  number    Int      @id // N in "Citat Quiz #N"
+  messageId String   @unique // The poll message
+  quoteId   String
+  kind      String // minister | external
+  options   Json // Poll answer texts, in poll order
+  postedAt  DateTime
+
+  // Filled in when the next run ends the poll and posts the results
+  resultMessageId String?   @unique
+  correctAnswer   String?
+  closedAt        DateTime?
+
+  votes QuizVote[]
+
+  @@index([quoteId])
+}
+
+model QuizVote {
+  round       QuizRound @relation(fields: [roundNumber], references: [number], onDelete: Cascade)
+  roundNumber Int
+  userId      String // Discord ID of the voter
+  answer      String // Poll answer text they picked
+  correct     Boolean
+
+  @@id([roundNumber, userId]) // Polls are single choice
+  @@index([userId])
 }

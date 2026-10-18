@@ -93,15 +93,19 @@ async function main() {
     throw new Error("Quiz channel is not a text-based channel");
   }
 
-  const usedQuotesPath = "src/quotes/quotes_used.json";
-  if (!fs.existsSync(usedQuotesPath)) fs.writeFileSync(usedQuotesPath, "[]", "utf-8");
-  const usedQuotes: string[] = JSON.parse(fs.readFileSync(usedQuotesPath, "utf-8")) as string[];
+  // A quote is used once a quiz round has asked about it
+  const usedQuotes = new Set((await prisma.quizRound.findMany({ select: { quoteId: true } })).map(r => r.quoteId));
+  // Legacy list from before rounds were stored; read-only, delete it once backfill.ts has run
+  const legacyUsedQuotesPath = "src/quotes/quotes_used.json";
+  if (fs.existsSync(legacyUsedQuotesPath)) {
+    for (const id of JSON.parse(fs.readFileSync(legacyUsedQuotesPath, "utf-8")) as string[]) usedQuotes.add(id);
+  }
 
   const allQuotes = (await prisma.quote.findMany()).map(fromQuoteRow);
   // Recurring non-minister quotees, counted over the whole corpus so the threshold
   // doesn't drift as quotes get used up
   const externals = collectExternalQuotees(allQuotes);
-  const availableQuotes = allQuotes.filter(q => roundKindFor(q, externals) !== null);
+  let availableQuotes = allQuotes.filter(q => roundKindFor(q, externals) !== null);
   console.info(`Loaded ${availableQuotes.length} quizzable quotes (${allQuotes.length} total, ${externals.size} external quotees)`);
 
   let quizNumber = 0;
@@ -309,12 +313,7 @@ async function main() {
   }
 
   // Remove used quotes from available quotes after having selected previous quote
-  for (const usedQuoteId of usedQuotes) {
-    const index = availableQuotes.findIndex(q => q.id === usedQuoteId);
-    if (index !== -1) {
-      availableQuotes.splice(index, 1);
-    }
-  }
+  availableQuotes = availableQuotes.filter(q => !usedQuotes.has(q.id));
   console.info(`There are ${availableQuotes.length} quotes left to select from`);
 
   /* 
@@ -340,14 +339,6 @@ async function main() {
       throw new Error(`No ${forcedKind ?? ""} quotes left to select from`.replace("  ", " "));
     }
     ({ quote, kind } = picked);
-  }
-
-  // Save quote id to file to avoid repeating quotes
-  if (!isDryRun) {
-    if (!usedQuotes.includes(quote.id)) {
-      usedQuotes.push(quote.id);
-    }
-    fs.writeFileSync(usedQuotesPath, JSON.stringify(usedQuotes, null, 2), "utf-8");
   }
 
   console.info(`Selected quote ID ${quote.id} for Quiz #${quizNumber} (${kind} round)`);
@@ -450,11 +441,31 @@ async function main() {
     console.info("Poll answers:", pollPayload.answers.map(a => a.text));
   }
   else {
-    await channel.send({
+    const pollMessage = await channel.send({
       content: quizContent,
       ...(embeds ? { embeds } : {}),
       poll: pollPayload,
     });
+
+    // Recording the round is what marks the quote as used. If this fails the poll is
+    // already out, so don't fail the run: backfill.ts recovers the row from the channel.
+    const round = {
+      messageId: pollMessage.id,
+      quoteId: quote.id,
+      kind,
+      options: pollPayload.answers.map(a => a.text),
+      postedAt: pollMessage.createdAt,
+    };
+    try {
+      await prisma.quizRound.upsert({
+        where: { number: quizNumber },
+        create: { number: quizNumber, ...round },
+        update: round,
+      });
+    }
+    catch (error) {
+      console.error(`Failed to record quiz round #${quizNumber}, run backfill.ts to recover it:`, error);
+    }
   }
 }
 
