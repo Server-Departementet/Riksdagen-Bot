@@ -18,6 +18,7 @@ import {
   roundKindFor,
   shouldHideSenderHint,
 } from "./quiz-selection";
+import { fetchPollVotes, saveQuizRound, votesFrom } from "./quiz-rounds";
 
 const nameVariants: Record<string, string[]> = aliases;
 
@@ -141,13 +142,14 @@ async function main() {
       console.info("No poll found on last quiz message, skipping results compilation");
       return;
     }
-    const correctAnswer = findCorrectAnswer(previousQuote, lastQuiz.poll.answers.values(), externals, users);
+    // Everyone's vote, not just the winners', so the round can be stored in full
+    const pollVotes = await fetchPollVotes(lastQuiz);
+    const correctAnswer = findCorrectAnswer(previousQuote, pollVotes, externals, users);
     if (!correctAnswer) {
       console.info("Could not find correct answer among poll answers, skipping results compilation");
       return;
     }
-    const correctVoters = await correctAnswer.voters.fetch();
-    const winningUsers = correctVoters ? Array.from(correctVoters.values()) : [];
+    const winningUsers = correctAnswer.voterIds.map(id => ({ id }));
 
     let resultContent = fs.readFileSync("src/quiz/templates/quiz-result.md", "utf-8");
     const quizResultData = {
@@ -174,7 +176,26 @@ async function main() {
       console.info("Dry run, would have posted results:\n" + resultContent);
     }
     else {
-      await channel.send(resultContent);
+      const resultMessage = await channel.send(resultContent);
+      try {
+        await saveQuizRound(prisma, {
+          number: quizNumber,
+          messageId: lastQuiz.id,
+          quoteId: previousQuote.id,
+          kind: previousQuote.quoteeId ? "minister" : "external",
+          options: pollVotes.map(o => o.text),
+          postedAt: lastQuiz.createdAt,
+          result: {
+            messageId: resultMessage.id,
+            closedAt: resultMessage.createdAt,
+            correctAnswer: correctAnswer.text,
+            votes: votesFrom(pollVotes),
+          },
+        });
+      }
+      catch (error) {
+        console.error(`Failed to record the result of quiz #${quizNumber}, run backfill.ts to recover it:`, error);
+      }
     }
     quizNumber += 1;
 
