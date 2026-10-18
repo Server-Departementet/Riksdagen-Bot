@@ -19,6 +19,7 @@ import {
   shouldHideSenderHint,
 } from "./quiz-selection";
 import { fetchPollVotes, saveQuizRound, votesFrom } from "./quiz-rounds";
+import { syncQuizToWebDatabases } from "./web-sync";
 
 const nameVariants: Record<string, string[]> = aliases;
 
@@ -487,6 +488,8 @@ async function main() {
     catch (error) {
       console.error(`Failed to record quiz round #${quizNumber}, run backfill.ts to recover it:`, error);
     }
+
+    await syncQuizToWebDatabases(prisma);
   }
 }
 

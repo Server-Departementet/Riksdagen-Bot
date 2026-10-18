@@ -6,6 +6,7 @@ import { makeMariaDBAdapter } from "@/lib/prisma";
 import { fromQuoteRow } from "../quotes/quote-db";
 import { collectExternalQuotees, findCorrectAnswer } from "./quiz-selection";
 import type { QuizRoundRecord } from "./quiz-rounds";
+import { syncQuizToWebDatabases } from "./web-sync";
 import {
   fetchPollVotes,
   parseQuizQuestion,
@@ -18,7 +19,8 @@ import {
 /*
  * Rebuild the QuizRound/QuizVote tables from the quiz channel: every poll, who voted
  * for what, and which option was right. Safe to re-run; each round is upserted and its
- * votes replaced. This is also the recovery path if the bot database is ever lost.
+ * votes replaced, then the web databases get a fresh copy. This is also the recovery
+ * path if the bot database is ever lost.
  *
  *   tsx src/quiz/backfill.ts [--dry-run]
  */
@@ -151,4 +153,6 @@ async function main() {
   console.info(isDryRun
     ? `Dry run, would have saved ${questions.size} rounds`
     : `Saved ${saved} rounds`);
+
+  if (!isDryRun) await syncQuizToWebDatabases(prisma);
 }

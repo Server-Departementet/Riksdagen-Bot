@@ -2,7 +2,7 @@ import "dotenv/config";
 import type { PrismaConfig } from "prisma/config";
 
 // Config for the client against the Riksdagen web app's databases.
-// The web repo owns that schema; this is a mirror of the Quote table only.
+// The web repo owns that schema; prisma/web.schema.prisma mirrors it in full.
 // Generate with: yarn prisma generate --config prisma.web.config.ts
 // The URL is only needed by CLI commands that connect; generate never does,
 // so a placeholder keeps `yarn generate` working where no web DB is configured.
