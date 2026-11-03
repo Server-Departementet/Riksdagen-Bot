@@ -244,6 +244,9 @@ function extractContext(quote: TrimmedMessage): Quote | null {
     "luna": "lily",
     "Lunas": "Lilys",
     "lunas": "lilys",
+    // Same lecturer, quoted by both Vena and Axel
+    "Venas föreläsare Tobias": "UU föreläsare Tobias",
+    "Axels föreläsare Tobias": "UU föreläsare Tobias",
     // Matched on the alias file rather than the User row, whose name is the Discord nick
     ...senderVariants.includes("agnes") ? { "min föreläsare": "Agnes föreläsare" } : {},
   };
