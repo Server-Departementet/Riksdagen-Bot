@@ -19,6 +19,8 @@ datasource db {
 model User {
   id   String  @id // Discord ID
   name String?
+  /// Most vibrant colour of their Discord avatar ("#rrggbb"), set by the web repo's scripts/make-users.ts
+  avatarColor String? @db.VarChar(7)
 
   trackPlays       TrackPlay[]
   spotifyAccount   SpotifyAccount?
@@ -143,6 +145,7 @@ model Quote {
   quotee String
 
   quoteeId    String?
+  quoteeKey   String?
   context     String? @db.Text
   attachments Json?
 

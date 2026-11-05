@@ -28,6 +28,7 @@ export async function syncQuotesToWebDatabases(quotes: Quote[]): Promise<void> {
           body: quote.body,
           quotee: quote.quotee,
           quoteeId: quote.quoteeId ?? null,
+          quoteeKey: quote.quoteeKey ?? null, // /citat/stats uses it to tell which quotes the quiz can ask about
           context: quote.context ?? null,
           attachments: quote.attachments ?? WebPrisma.JsonNull,
         };
